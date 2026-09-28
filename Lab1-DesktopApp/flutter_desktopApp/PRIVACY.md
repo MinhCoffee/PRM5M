@@ -4,6 +4,8 @@
 
 This Privacy Policy explains how FAP Attendance ("the App") handles information when used by lecturers and authorized university staff to manage classroom attendance.
 
+   This App is a student coursework project and is not an official product of
+   FPT University or the FAP portal.
 ## 1. Data We Collect
 
 Depending on the enabled features, the App may process:
@@ -35,6 +37,10 @@ When Google integration is enabled, the App may request access to the Google acc
 The App does not sell Google user data. We do not transfer Google user data to advertising platforms, data brokers, or unrelated third parties. Google user data is not used to develop or train generalized artificial intelligence or machine-learning models.
 
 Users can revoke the App's Google access at any time from their Google Account security settings. Revoking access may prevent Google-connected features from working.
+
+The App's use and transfer to any other app of information received from Google APIs
+will adhere to the Google API Services User Data Policy, including the Limited Use
+requirements.
 
 ## 4. Data Sharing
 
