@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'screens/main_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'core/theme/app_theme.dart';
+import 'core/widgets/app_shell.dart';
+import 'core/widgets/placeholder_page.dart';
+import 'features/attendance/attendance_browse_page.dart';
+import 'features/attendance/attendance_detail_page.dart';
+import 'features/attendance/data/attendance_repository.dart';
+import 'features/auth/login_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,33 +24,50 @@ class AttendanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Điểm danh Sinh viên (Flutter Desktop)',
+    final repository = MockAttendanceRepository();
+    final router = GoRouter(
+      initialLocation: '/login',
+      routes: [
+        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+        ShellRoute(
+          builder: (context, state, child) => AppShell(child: child),
+          routes: [
+            GoRoute(
+              path: '/take-attendance',
+              builder: (context, state) => AttendanceBrowsePage(
+                repository: repository,
+                onSessionSelected: (session) => context.go('/attendance/${session.id}'),
+              ),
+            ),
+            GoRoute(
+              path: '/attendance/:sessionId',
+              builder: (context, state) => AttendanceDetailPage(
+                sessionId: state.pathParameters['sessionId']!,
+                repository: repository,
+              ),
+            ),
+            _placeholderRoute('/home', 'Home'),
+            _placeholderRoute('/my-classes', 'My Classes'),
+            _placeholderRoute('/timetable', 'Timetable'),
+            _placeholderRoute('/reports', 'Reports'),
+            _placeholderRoute('/fap-sync', 'FAP Sync'),
+            _placeholderRoute('/ai-assistant', 'AI Assistant'),
+            _placeholderRoute('/settings', 'Settings'),
+          ],
+        ),
+      ],
+    );
+    return MaterialApp.router(
+      title: 'Academic Portal - Attendance',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF37021),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        fontFamily: 'Segoe UI',
-        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF0B1F3A),
-          elevation: 0,
-        ),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFF37021),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        fontFamily: 'Segoe UI',
-      ),
+      theme: AppTheme.light,
       themeMode: ThemeMode.light,
-      home: const MainScreen(),
+      routerConfig: router,
     );
   }
+
+  GoRoute _placeholderRoute(String path, String title) => GoRoute(
+        path: path,
+        builder: (context, state) => PlaceholderPage(title: title),
+      );
 }

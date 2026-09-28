@@ -3,14 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_application_1/main.dart';
 
 void main() {
-  testWidgets('App renders main screens and class selection', (WidgetTester tester) async {
+  testWidgets('App starts on the login screen', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1.0;
 
     await tester.pumpWidget(const AttendanceApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Bắt đầu điểm danh'), findsAtLeast(1));
+    expect(find.text('Sign in with Google'), findsOneWidget);
 
     // Reset surface size after test
     addTearDown(tester.view.resetPhysicalSize);
