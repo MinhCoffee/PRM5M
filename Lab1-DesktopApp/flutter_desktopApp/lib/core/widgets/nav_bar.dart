@@ -9,8 +9,7 @@ class NavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = {
       'Home': '/home',
-      'My Classes': '/my-classes',
-      'Timetable': '/timetable',
+            'Timetable': '/timetable',
       'Export': '/fap-sync',
       'AI Assistant': '/ai-assistant',
       'Take Attendance': '/take-attendance',

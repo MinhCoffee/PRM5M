@@ -18,7 +18,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadFuture = widget.stats.load();
+    _loadFuture = widget.stats.load(force: true);
   }
 
   DateTime get _today {
@@ -44,9 +44,14 @@ class _HomePageState extends State<HomePage> {
         final bannedStudents = widget.stats.students.map(widget.stats.studentStats).where((row) => row.status == StudentRiskStatus.banned).length;
         final draftSessions = widget.stats.attendance.where((row) => row.syncStatus == 'draft').map((row) => row.sessionId).toSet().length;
         return ListView(padding: const EdgeInsets.all(24), children: [
-          Text('Home', style: Theme.of(context).textTheme.headlineLarge),
-          const SizedBox(height: 4),
-          Text('Attendance overview for ${_today.year}-${_twoDigits(_today.month)}-${_twoDigits(_today.day)}.', style: Theme.of(context).textTheme.bodyMedium),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Home', style: Theme.of(context).textTheme.headlineLarge),
+              const SizedBox(height: 4),
+              Text('Attendance overview for ${_today.year}-${_twoDigits(_today.month)}-${_twoDigits(_today.day)}.', style: Theme.of(context).textTheme.bodyMedium),
+            ]),
+            IconButton.filledTonal(tooltip: 'Refresh data', icon: const Icon(Icons.refresh), onPressed: () => setState(() => _loadFuture = widget.stats.load(force: true))),
+          ]),
           const SizedBox(height: 20),
           Wrap(spacing: 12, runSpacing: 12, children: [
             _statCard('Classes today', '${todaySessions.length}', Icons.calendar_today_outlined, AppColors.primary),
@@ -81,7 +86,6 @@ class _HomePageState extends State<HomePage> {
                   SizedBox(height: 12),
                   Text('1. Take Attendance: Click on a class session under "Today\'s sessions" or via the "Take Attendance" tab. You can mark students as Present or Absent and add notes.'),
                   SizedBox(height: 8),
-                  Text('2. My Classes: Monitor your ongoing classes. A progress bar indicates how many sessions have passed out of the total. You can see how many students are at risk.'),
                   SizedBox(height: 8),
                   Text('3. Reports: View a detailed breakdown of student absences across all classes. Use filters to narrow down by semester, subject, or class.'),
                   SizedBox(height: 16),

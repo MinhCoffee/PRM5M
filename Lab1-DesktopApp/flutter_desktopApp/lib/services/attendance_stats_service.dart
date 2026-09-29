@@ -122,10 +122,11 @@ class AttendanceStatsService {
   }
 
   SessionStatus sessionStatus(SheetScheduleRow session) {
-    // Per spec: isHeld = dateOnly(date) <= dateOnly(now). Slot/time does NOT matter.
     if (!_isOnOrBeforeToday(session.sessionDate)) return SessionStatus.notTaken;
     final rows = attendance.where((row) => row.sessionId == session.sessionId).toList();
     if (rows.isEmpty) return SessionStatus.overdueNotTaken;
+    final hasDraft = rows.any((r) => r.syncStatus == 'draft');
+    if (hasDraft) return SessionStatus.inProgress;
     return SessionStatus.taken;
   }
 

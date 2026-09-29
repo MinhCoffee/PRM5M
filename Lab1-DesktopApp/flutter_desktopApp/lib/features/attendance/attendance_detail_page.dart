@@ -3,12 +3,14 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/status_chip.dart';
 import 'attendance_student.dart';
 import 'data/attendance_repository.dart';
+import '../../services/attendance_stats_service.dart';
 
 class AttendanceDetailPage extends StatefulWidget {
   final String sessionId;
   final AttendanceRepository repository;
+  final AttendanceStatsService? stats;
 
-  const AttendanceDetailPage({super.key, required this.sessionId, required this.repository});
+  const AttendanceDetailPage({super.key, required this.sessionId, required this.repository, this.stats});
 
   @override
   State<AttendanceDetailPage> createState() => _AttendanceDetailPageState();
@@ -43,10 +45,12 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
       final sessions = await widget.repository.getSessions();
       final session = sessions.firstWhere((item) => item.id == widget.sessionId);
       final students = await widget.repository.studentsForSession(widget.sessionId);
+      final syncStatus = await widget.repository.getSessionSyncStatus(widget.sessionId);
       if (!mounted) return;
       setState(() {
         _session = session;
         _students = students;
+        _submitted = syncStatus == 'submitted';
         _initialStatuses
           ..clear()
           ..addEntries(students.map((student) => MapEntry(student.studentId.isEmpty ? student.rollNo : student.studentId, student.status)));
@@ -88,6 +92,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     setState(() => _saving = true);
     try {
       await widget.repository.saveAttendance(widget.sessionId, _students, submitted: submitted);
+      await widget.stats?.load(force: true);
       if (!mounted) return;
       setState(() {
         _submitted = submitted;
@@ -187,7 +192,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
               _actionButton(Icons.remove_done, 'Mark All Absent', () => _setAll(AttendanceState.absent), danger: true),
               _actionButton(Icons.restart_alt, 'Reset', _resetStatuses),
               _actionButton(Icons.save_outlined, _saving ? 'Saving...' : 'Save Draft', _saving ? () {} : () => _save(submitted: false), filled: true),
-              _actionButton(Icons.cloud_sync_outlined, _submitted ? 'Submitted' : 'Submit', _submitted || _saving ? () {} : _submit, filled: true, orange: true),
+              _actionButton(Icons.cloud_sync_outlined, _saving ? 'Submitting...' : (_submitted ? 'Update & Submit' : 'Submit'), _saving ? () {} : _submit, filled: true, orange: true),
             ]),
             const SizedBox(height: 10),
             Row(children: [

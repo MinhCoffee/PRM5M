@@ -229,6 +229,61 @@ class GoogleSheetService {
     }
   }
 
+  Future<void> batchUpsertAttendance({required String sessionId, required List<SheetAttendanceRow> records}) async {
+    await _requireLive();
+    try {
+      final rows = await _readRows(_attendanceSheet!, 'attendance', _attendanceHeaders);
+      final existingRowMap = <String, int>{};
+      for (var i = 0; i < rows.length; i++) {
+        if (_value(rows[i], 'session_id') == sessionId) {
+          final sId = _value(rows[i], 'student_id');
+          existingRowMap[sId] = i + 2;
+        }
+      }
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final rowsToUpdate = <int, List<String>>{};
+      final rowsToAppend = <List<String>>[];
+
+      for (final rec in records) {
+        final attendanceId = rec.attendanceId.isNotEmpty ? rec.attendanceId : 'attendance-$sessionId-${rec.studentId}';
+        final values = [
+          attendanceId,
+          sessionId,
+          rec.studentId,
+          rec.status,
+          rec.note,
+          rec.syncStatus,
+          nowIso,
+        ];
+        if (existingRowMap.containsKey(rec.studentId)) {
+          rowsToUpdate[existingRowMap[rec.studentId]!] = values;
+        } else {
+          rowsToAppend.add(values);
+        }
+      }
+
+      if (rowsToUpdate.isNotEmpty) {
+        final sortedIndices = rowsToUpdate.keys.toList()..sort();
+        final isContiguous = (sortedIndices.last - sortedIndices.first + 1) == sortedIndices.length;
+        if (isContiguous) {
+          final block = sortedIndices.map((idx) => rowsToUpdate[idx]!).toList();
+          await _attendanceSheet!.values.insertRows(sortedIndices.first, block);
+        } else {
+          await Future.wait(
+            rowsToUpdate.entries.map((entry) => _attendanceSheet!.values.insertRow(entry.key, entry.value)),
+          );
+        }
+      }
+
+      if (rowsToAppend.isNotEmpty) {
+        await _attendanceSheet!.values.appendRows(rowsToAppend);
+      }
+    } catch (e) {
+      throw GoogleSheetException('Could not save attendance: $e');
+    }
+  }
+
   Future<void> upsertAttendance({required String sessionId, required String studentId, required String status, required String note, required String syncStatus}) async {
     await _requireLive();
     if (status != 'present' && status != 'absent') throw const GoogleSheetException('Attendance status must be present or absent.');

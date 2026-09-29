@@ -31,6 +31,7 @@ class AttendanceSession {
 abstract interface class AttendanceRepository {
   Future<List<AttendanceSession>> getSessions();
   Future<List<AttendanceStudent>> studentsForSession(String sessionId);
+  Future<String?> getSessionSyncStatus(String sessionId);
   Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted});
   Future<SeedSummary> seedSampleData();
 }
@@ -42,7 +43,7 @@ class MockAttendanceRepository implements AttendanceRepository {
       subjectCode: 'SWP391',
       subjectName: 'Application Development Project',
       className: 'SE1804',
-      schedule: 'Slot 3 · 11:00 - 12:30',
+      schedule: 'Slot 3 - 11:00 - 12:30',
       room: 'Room 302',
       date: 'Thu, 22/10/2026',
       sessionNumber: 14,
@@ -54,7 +55,7 @@ class MockAttendanceRepository implements AttendanceRepository {
       subjectCode: 'SWD392',
       subjectName: 'Software Architecture',
       className: 'SE1802',
-      schedule: 'Slot 1 · 07:30 - 09:00',
+      schedule: 'Slot 1 - 07:30 - 09:00',
       room: 'Lab A-203',
       date: 'Fri, 23/10/2026',
       sessionNumber: 10,
@@ -66,7 +67,7 @@ class MockAttendanceRepository implements AttendanceRepository {
       subjectCode: 'SWE202',
       subjectName: 'Software Testing',
       className: 'SE1801',
-      schedule: 'Slot 5 · 15:00 - 16:30',
+      schedule: 'Slot 5 - 15:00 - 16:30',
       room: 'Room 405',
       date: 'Mon, 26/10/2026',
       sessionNumber: 8,
@@ -91,6 +92,9 @@ class MockAttendanceRepository implements AttendanceRepository {
       _student('HE171012', 'Bui Mai Phuong', 'Female', 4, 'Consecutive absence 3rd time', Colors.pink, present: false),
     ];
   }
+
+  @override
+  Future<String?> getSessionSyncStatus(String sessionId) async => null;
 
   @override
   Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {}
@@ -152,16 +156,27 @@ class GoogleSheetsAttendanceRepository implements AttendanceRepository {
   }
 
   @override
+  Future<String?> getSessionSyncStatus(String sessionId) async {
+    final attendance = await service.getAttendance(sessionId);
+    if (attendance.isEmpty) return null;
+    return attendance.first.syncStatus;
+  }
+
+  @override
   Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {
-    for (final student in students) {
-      await service.upsertAttendance(
+    final records = students.map((student) {
+      final studentId = student.studentId.isEmpty ? student.rollNo : student.studentId;
+      return SheetAttendanceRow(
+        attendanceId: 'attendance--',
         sessionId: sessionId,
-        studentId: student.studentId.isEmpty ? student.rollNo : student.studentId,
+        studentId: studentId,
         status: student.status == AttendanceState.present ? 'present' : 'absent',
         note: student.note,
         syncStatus: submitted ? 'submitted' : 'draft',
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
-    }
+    }).toList();
+    await service.batchUpsertAttendance(sessionId: sessionId, records: records);
   }
 
   @override

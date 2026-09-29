@@ -74,6 +74,7 @@ class AttendanceApp extends StatelessWidget {
               builder: (context, state) => AttendanceDetailPage(
                 sessionId: state.pathParameters['sessionId']!,
                 repository: repository,
+                stats: stats,
               ),
             ),
             GoRoute(
