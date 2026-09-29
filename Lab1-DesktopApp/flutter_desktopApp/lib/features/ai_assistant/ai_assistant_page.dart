@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../services/attendance_stats_service.dart';
 
@@ -23,34 +24,49 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
   }
 
   void _atRisk() {
-    final rows = widget.stats.students
-        .map(widget.stats.studentStats)
-        .where((row) => row.status != StudentRiskStatus.ok)
-        .toList()
-      ..sort((a, b) => b.absenceRate.compareTo(a.absenceRate));
+    final rows =
+        widget.stats.students
+            .map(
+              (student) => widget.stats.studentStatsAcrossAllSubjects(
+                student,
+                usePolicyThresholds: true,
+              ),
+            )
+            .where((row) => row.status != StudentRiskStatus.ok)
+            .toList()
+          ..sort((a, b) => b.absenceRate.compareTo(a.absenceRate));
+    final warningRows = rows
+        .where((row) => row.status == StudentRiskStatus.warning)
+        .toList();
+    final bannedRows = rows
+        .where((row) => row.status == StudentRiskStatus.banned)
+        .toList();
     final text = rows.isEmpty
-        ? 'No warning or banned students were found.'
-        : 'At-risk students: ${rows.take(10).map((row) => '${row.student.studentCode} ${row.student.fullName} ${(row.absenceRate * 100).toStringAsFixed(1)}%').join('; ')}.';
+        ? 'AI scanned all subjects and found no students above the 15% absence warning threshold.'
+        : [
+            'AI scanned all subjects. Rule: >15% to 20% is warning, >20% is banned.',
+            if (bannedRows.isNotEmpty)
+              'Banned: ${bannedRows.take(10).map(_studentRiskText).join('; ')}.',
+            if (warningRows.isNotEmpty)
+              'Warning: ${warningRows.take(10).map(_studentRiskText).join('; ')}.',
+          ].join(' ');
     setState(() => _messages.add(text));
   }
 
-  void _highestClass() {
-    final classes = widget.stats.classStats();
-    if (classes.isEmpty) {
-      setState(() => _messages.add('No class data is available.'));
+  void _highestSubject() {
+    final subjects = widget.stats.subjectStats(usePolicyThresholds: true)
+      ..sort((a, b) => b.absenceRate.compareTo(a.absenceRate));
+    if (subjects.isEmpty) {
+      setState(() => _messages.add('No subject attendance data is available.'));
       return;
     }
-    final ranked = classes.map((classStats) {
-      final rows = widget.stats.statsForClass(classStats.classCode);
-      final rate = rows.isEmpty
-          ? 0.0
-          : rows.map((row) => row.absenceRate).reduce((a, b) => a + b) / rows.length;
-      return MapEntry(classStats.classCode, rate);
-    }).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final top = ranked.first;
-    setState(() => _messages.add(
-        'Class with highest average absence is ${top.key} at ${(top.value * 100).toStringAsFixed(1)}%.'));
+    final top = subjects.first;
+    setState(
+      () => _messages.add(
+        'Subject/class with highest absence is ${top.subjectCode} ${top.classCode} at ${_percent(top.absenceRate)} '
+        '(${top.absentCount}/${top.recordsCount} attendance records), status ${_riskLabel(top.status)}.',
+      ),
+    );
   }
 
   void _studentHistory() {
@@ -61,10 +77,40 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
     final matches = studentList.where((item) => item.studentId == id);
     if (matches.isEmpty) return;
     final student = matches.first;
-    final row = widget.stats.studentStats(student);
-    setState(() => _messages.add(
-        '${student.studentCode} ${student.fullName}: ${row.absentCount} absent across ${row.sessionsHeld} attendance rows, ${(row.absenceRate * 100).toStringAsFixed(1)}%, status ${row.status.value}.'));
+    final row = widget.stats.studentStatsAcrossAllSubjects(
+      student,
+      usePolicyThresholds: true,
+    );
+    final subjects = widget.stats.subjectStatsForStudent(
+      student,
+      usePolicyThresholds: true,
+    );
+    final subjectText = subjects.isEmpty
+        ? 'No subject-level attendance rows found.'
+        : subjects
+              .map(
+                (subject) =>
+                    '${subject.subjectCode} ${subject.classCode}: ${subject.absentCount}/${subject.recordsCount} absent, ${_percent(subject.absenceRate)}, ${_riskLabel(subject.status)}',
+              )
+              .join('; ');
+    setState(
+      () => _messages.add(
+        '${student.studentCode} ${student.fullName}: ${row.absentCount} absent across ${row.sessionsHeld} attendance rows from all subjects, '
+        '${_percent(row.absenceRate)}, status ${_riskLabel(row.status)}. $subjectText',
+      ),
+    );
   }
+
+  String _studentRiskText(AttendanceStudentStats row) =>
+      '${row.student.studentCode} ${row.student.fullName} ${_percent(row.absenceRate)} (${row.absentCount}/${row.sessionsHeld})';
+
+  String _percent(double value) => '${(value * 100).toStringAsFixed(1)}%';
+
+  String _riskLabel(StudentRiskStatus status) => switch (status) {
+    StudentRiskStatus.ok => 'OK',
+    StudentRiskStatus.warning => 'WARNING',
+    StudentRiskStatus.banned => 'BANNED',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -75,90 +121,122 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Could not load assistant data: ${snapshot.error}'));
+          return Center(
+            child: Text('Could not load assistant data: ${snapshot.error}'),
+          );
         }
 
-        final students = [...widget.stats.students]..sort((a, b) => a.fullName.compareTo(b.fullName));
+        final students = [...widget.stats.students]
+          ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
         // Validate _selectedStudentId: must be null or in the current list.
         // Never set a value that isn't present in the DropdownButton's items.
         final validIds = students.map((s) => s.studentId).toSet();
-        if (_selectedStudentId != null && !validIds.contains(_selectedStudentId)) {
+        if (_selectedStudentId != null &&
+            !validIds.contains(_selectedStudentId)) {
           _selectedStudentId = null;
         }
-        _selectedStudentId ??= students.isEmpty ? null : students.first.studentId;
+        _selectedStudentId ??= students.isEmpty
+            ? null
+            : students.first.studentId;
 
-        return ListView(padding: const EdgeInsets.all(24), children: [
-          Text('AI Assistant', style: Theme.of(context).textTheme.headlineLarge),
-          const SizedBox(height: 4),
-          Text('Rule-based answers computed from the attendance workbook.',
-              style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Wrap(spacing: 10, runSpacing: 10, children: [
-                FilledButton.icon(
-                  onPressed: _atRisk,
-                  icon: const Icon(Icons.warning_amber_outlined),
-                  label: const Text('At-risk students'),
-                ),
-                FilledButton.icon(
-                  onPressed: _highestClass,
-                  icon: const Icon(Icons.leaderboard_outlined),
-                  label: const Text('Highest absence class'),
-                ),
-                SizedBox(
-                  width: 260,
-                  child: DropdownButtonFormField<String>(
-                    // initialValue and items always come from the SAME source list.
-                    // Dropdown is disabled when list is empty.
-                    initialValue: students.isEmpty ? null : _selectedStudentId,
-                    decoration: const InputDecoration(labelText: 'Student history'),
-                    items: students
-                        .map((student) => DropdownMenuItem(
-                              value: student.studentId,
-                              child: Text('${student.studentCode} ${student.fullName}'),
-                            ))
-                        .toList(),
-                    onChanged: students.isEmpty
-                        ? null // disables the dropdown gracefully
-                        : (value) => setState(() => _selectedStudentId = value),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: students.isEmpty ? null : _studentHistory,
-                  icon: const Icon(Icons.history),
-                  label: const Text('Ask history'),
-                ),
-              ]),
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Text(
+              'AI Assistant',
+              style: Theme.of(context).textTheme.headlineLarge,
             ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _messages.isEmpty
-                  ? const Text('Choose a question to calculate an answer.')
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _messages
-                          .map((message) => Padding(
+            const SizedBox(height: 4),
+            Text(
+              'Rule-based answers across all subjects: >15% to 20% absence is warning, >20% is banned.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _atRisk,
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      label: const Text('At-risk students'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _highestSubject,
+                      icon: const Icon(Icons.leaderboard_outlined),
+                      label: const Text('Highest absence subject'),
+                    ),
+                    SizedBox(
+                      width: 260,
+                      child: DropdownButtonFormField<String>(
+                        // initialValue and items always come from the SAME source list.
+                        // Dropdown is disabled when list is empty.
+                        initialValue: students.isEmpty
+                            ? null
+                            : _selectedStudentId,
+                        decoration: const InputDecoration(
+                          labelText: 'Student history',
+                        ),
+                        items: students
+                            .map(
+                              (student) => DropdownMenuItem(
+                                value: student.studentId,
+                                child: Text(
+                                  '${student.studentCode} ${student.fullName}',
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: students.isEmpty
+                            ? null // disables the dropdown gracefully
+                            : (value) =>
+                                  setState(() => _selectedStudentId = value),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: students.isEmpty ? null : _studentHistory,
+                      icon: const Icon(Icons.history),
+                      label: const Text('Ask history'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _messages.isEmpty
+                    ? const Text('Choose a question to calculate an answer.')
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _messages
+                            .map(
+                              (message) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.smart_toy_outlined, color: AppColors.primary),
+                                    const Icon(
+                                      Icons.smart_toy_outlined,
+                                      color: AppColors.primary,
+                                    ),
                                     const SizedBox(width: 10),
                                     Expanded(child: Text(message)),
                                   ],
                                 ),
-                              ))
-                          .toList(),
-                    ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+              ),
             ),
-          ),
-        ]);
+          ],
+        );
       },
     );
   }
