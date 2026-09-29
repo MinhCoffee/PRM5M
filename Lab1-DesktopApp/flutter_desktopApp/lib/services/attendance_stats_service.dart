@@ -58,6 +58,26 @@ class AttendanceClassStats {
   });
 }
 
+class AttendanceSubjectStats {
+  final String classCode;
+  final String subjectCode;
+  final String subjectName;
+  final int recordsCount;
+  final int absentCount;
+  final double absenceRate;
+  final StudentRiskStatus status;
+
+  const AttendanceSubjectStats({
+    required this.classCode,
+    required this.subjectCode,
+    required this.subjectName,
+    required this.recordsCount,
+    required this.absentCount,
+    required this.absenceRate,
+    required this.status,
+  });
+}
+
 class AttendanceStatsService {
   static const defaultWarnThreshold = 0.15;
   static const defaultBanThreshold = 0.20;
@@ -140,6 +160,12 @@ class AttendanceStatsService {
     return StudentRiskStatus.ok;
   }
 
+  StudentRiskStatus attendancePolicyStatus(double rate) {
+    if (rate > defaultBanThreshold) return StudentRiskStatus.banned;
+    if (rate > defaultWarnThreshold) return StudentRiskStatus.warning;
+    return StudentRiskStatus.ok;
+  }
+
   SessionStatus sessionStatus(SheetScheduleRow session) {
     final sessionDate = DateTime.tryParse(session.sessionDate);
     if (sessionDate == null) return SessionStatus.notTaken;
@@ -198,15 +224,94 @@ class AttendanceStatsService {
               classSessionIds.contains(row.sessionId),
         )
         .toList();
-    final absentCount = rows.where((row) => row.status == 'absent').length;
-    final rate = rows.isEmpty ? 0.0 : absentCount / rows.length;
-    return AttendanceStudentStats(
+    return _studentStatsFromRows(
       student: student,
-      sessionsHeld: rows.length,
-      absentCount: absentCount,
-      absenceRate: rate,
-      status: studentStatus(rate),
+      rows: rows,
+      usePolicyThresholds: false,
     );
+  }
+
+  AttendanceStudentStats studentStatsAcrossAllSubjects(
+    Student student, {
+    bool usePolicyThresholds = false,
+  }) {
+    final heldSessionIds = _heldSessionsById().keys.toSet();
+    final rows = attendance
+        .where(
+          (row) =>
+              row.studentId == student.studentId &&
+              heldSessionIds.contains(row.sessionId),
+        )
+        .toList();
+    return _studentStatsFromRows(
+      student: student,
+      rows: rows,
+      usePolicyThresholds: usePolicyThresholds,
+    );
+  }
+
+  List<AttendanceSubjectStats> subjectStats({
+    bool usePolicyThresholds = false,
+  }) {
+    final heldSessions = _heldSessionsById();
+    final rowsBySubject = <String, List<SheetAttendanceRow>>{};
+    final subjectsByKey = <String, SheetScheduleRow>{};
+
+    for (final row in attendance) {
+      final session = heldSessions[row.sessionId];
+      if (session == null) continue;
+      final key = _subjectKey(session);
+      rowsBySubject.putIfAbsent(key, () => []).add(row);
+      subjectsByKey.putIfAbsent(key, () => session);
+    }
+
+    return rowsBySubject.entries.map((entry) {
+      final session = subjectsByKey[entry.key]!;
+      return _subjectStatsFromRows(
+        session: session,
+        rows: entry.value,
+        usePolicyThresholds: usePolicyThresholds,
+      );
+    }).toList()..sort((a, b) {
+      final subjectCompare = a.subjectCode.compareTo(b.subjectCode);
+      return subjectCompare != 0
+          ? subjectCompare
+          : a.classCode.compareTo(b.classCode);
+    });
+  }
+
+  List<AttendanceSubjectStats> subjectStatsForStudent(
+    Student student, {
+    bool usePolicyThresholds = false,
+  }) {
+    final heldSessions = _heldSessionsById();
+    final rowsBySubject = <String, List<SheetAttendanceRow>>{};
+    final subjectsByKey = <String, SheetScheduleRow>{};
+
+    for (final row in attendance) {
+      if (row.studentId != student.studentId) continue;
+      final session = heldSessions[row.sessionId];
+      if (session == null) continue;
+      final key = _subjectKey(session);
+      rowsBySubject.putIfAbsent(key, () => []).add(row);
+      subjectsByKey.putIfAbsent(key, () => session);
+    }
+
+    return rowsBySubject.entries.map((entry) {
+      final session = subjectsByKey[entry.key]!;
+      return _subjectStatsFromRows(
+        session: session,
+        rows: entry.value,
+        usePolicyThresholds: usePolicyThresholds,
+      );
+    }).toList()..sort((a, b) {
+      final rateCompare = b.absenceRate.compareTo(a.absenceRate);
+      if (rateCompare != 0) return rateCompare;
+      final subjectCompare = a.subjectCode.compareTo(b.subjectCode);
+      return subjectCompare != 0
+          ? subjectCompare
+          : a.classCode.compareTo(b.classCode);
+    });
   }
 
   List<AttendanceStudentStats> statsForClass(String classCode) => students
@@ -251,6 +356,56 @@ class AttendanceStatsService {
       );
     }).toList();
   }
+
+  AttendanceStudentStats _studentStatsFromRows({
+    required Student student,
+    required List<SheetAttendanceRow> rows,
+    required bool usePolicyThresholds,
+  }) {
+    final absentCount = rows
+        .where((row) => row.status.toLowerCase() == 'absent')
+        .length;
+    final rate = rows.isEmpty ? 0.0 : absentCount / rows.length;
+    return AttendanceStudentStats(
+      student: student,
+      sessionsHeld: rows.length,
+      absentCount: absentCount,
+      absenceRate: rate,
+      status: usePolicyThresholds
+          ? attendancePolicyStatus(rate)
+          : studentStatus(rate),
+    );
+  }
+
+  AttendanceSubjectStats _subjectStatsFromRows({
+    required SheetScheduleRow session,
+    required List<SheetAttendanceRow> rows,
+    required bool usePolicyThresholds,
+  }) {
+    final absentCount = rows
+        .where((row) => row.status.toLowerCase() == 'absent')
+        .length;
+    final rate = rows.isEmpty ? 0.0 : absentCount / rows.length;
+    return AttendanceSubjectStats(
+      classCode: session.classCode,
+      subjectCode: session.subjectCode,
+      subjectName: session.subjectName,
+      recordsCount: rows.length,
+      absentCount: absentCount,
+      absenceRate: rate,
+      status: usePolicyThresholds
+          ? attendancePolicyStatus(rate)
+          : studentStatus(rate),
+    );
+  }
+
+  Map<String, SheetScheduleRow> _heldSessionsById() => {
+    for (final session in sessions)
+      if (_isOnOrBeforeToday(session.sessionDate)) session.sessionId: session,
+  };
+
+  String _subjectKey(SheetScheduleRow session) =>
+      '${session.subjectCode}|${session.classCode}';
 
   /// `isHeld(session)` per spec: dateOnly(session.date) <= dateOnly(now).
   /// Time-of-day and slot number do NOT matter.
