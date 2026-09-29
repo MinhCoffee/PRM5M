@@ -1,12 +1,15 @@
 import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../models/student.dart';
 import '../../services/attendance_stats_service.dart';
+import '../../services/file_service.dart';
 import '../../services/google_sheet_service.dart';
 
 class ExportPage extends StatefulWidget {
@@ -19,15 +22,25 @@ class ExportPage extends StatefulWidget {
 }
 
 class _ExportPageState extends State<ExportPage> {
+  final _fileService = FileService();
+  final _importClassController = TextEditingController();
   late Future<void> _loadFuture;
   String _classCode = 'all';
   DateTime? _from;
   DateTime? _to;
+  bool _exporting = false;
+  bool _importing = false;
 
   @override
   void initState() {
     super.initState();
     _loadFuture = widget.stats.load(force: true);
+  }
+
+  @override
+  void dispose() {
+    _importClassController.dispose();
+    super.dispose();
   }
 
   List<SheetScheduleRow> get _sessions => widget.stats.sessions.where((session) {
@@ -50,6 +63,8 @@ class _ExportPageState extends State<ExportPage> {
   }
 
   Future<void> _exportCsv() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
     try {
       final sessionIds = _sessions.map((session) => session.sessionId).toSet();
       final relevantAttendance = widget.stats.attendance.where((row) => sessionIds.contains(row.sessionId)).toList();
@@ -104,7 +119,6 @@ class _ExportPageState extends State<ExportPage> {
         );
       } catch (_) {}
 
-      // Fallback to Documents folder if dialog was bypassed
       if (savePath == null) {
         final directory = await getApplicationDocumentsDirectory();
         savePath = '${directory.path}${Platform.pathSeparator}$defaultFileName';
@@ -125,6 +139,56 @@ class _ExportPageState extends State<ExportPage> {
       }
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $error')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _importStudents({required bool excel}) async {
+    if (_importing) return;
+    final fallbackClass = (_importClassController.text.trim().isNotEmpty
+            ? _importClassController.text
+            : (_classCode == 'all' ? '' : _classCode))
+        .trim()
+        .toUpperCase();
+    if (fallbackClass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a fallback class code before importing.')),
+      );
+      return;
+    }
+
+    setState(() => _importing = true);
+    try {
+      final students = excel
+          ? await _fileService.importStudentsFromExcel(fallbackClass)
+          : await _fileService.importStudentsFromCsv(fallbackClass);
+      if (students.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No students were imported.')));
+        return;
+      }
+      final added = await widget.stats.sheetService.appendStudents(students);
+      await widget.stats.load(force: true);
+      if (!mounted) return;
+      final importedClasses = students
+          .map((student) => student.classId.trim().toUpperCase())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+      final selectedClass = importedClasses.contains(fallbackClass) ? fallbackClass : importedClasses.first;
+      setState(() {
+        _classCode = selectedClass;
+        _importClassController.text = selectedClass;
+      });
+      final skipped = students.length - added;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $added new students. Skipped $skipped duplicate rows.')),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $error')));
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -151,10 +215,10 @@ class _ExportPageState extends State<ExportPage> {
           Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Export Attendance', style: Theme.of(context).textTheme.headlineLarge),
+                Text('Export & FAP Sync', style: Theme.of(context).textTheme.headlineLarge),
                 const SizedBox(height: 4),
                 Text(
-                  'Select class and date range to export official FAP attendance records with Class Code & Roll Number.',
+                  'Select class and date range to export official FAP attendance records or import class roster from CSV/Excel.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ]),
@@ -166,9 +230,9 @@ class _ExportPageState extends State<ExportPage> {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              onPressed: _exportCsv,
+              onPressed: _exporting ? null : _exportCsv,
               icon: const Icon(Icons.download_outlined),
-              label: Text(_classCode == 'all' ? 'Export CSV (All Classes)' : 'Export CSV ()'),
+              label: Text(_exporting ? 'Exporting...' : (_classCode == 'all' ? 'Export CSV (All Classes)' : 'Export CSV ($_classCode)')),
             ),
           ]),
           const SizedBox(height: 18),
@@ -184,7 +248,7 @@ class _ExportPageState extends State<ExportPage> {
                     items: classes
                         .map((value) => DropdownMenuItem(
                               value: value,
-                              child: Text(value == 'all' ? '🏫 All classes' : '📘 Class '),
+                              child: Text(value == 'all' ? '🏫 All classes' : '📘 Class $value'),
                             ))
                         .toList(),
                     onChanged: (value) => setState(() => _classCode = value ?? 'all'),
@@ -208,6 +272,36 @@ class _ExportPageState extends State<ExportPage> {
                   }),
                   icon: const Icon(Icons.clear_all, size: 16),
                   label: const Text('Reset filters'),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                SizedBox(
+                  width: 200,
+                  child: TextField(
+                    controller: _importClassController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Fallback class code',
+                      hintText: 'SE1804',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _importing ? null : () => _importStudents(excel: false),
+                  icon: const Icon(Icons.upload_file),
+                  label: Text(_importing ? 'Importing...' : 'Import Students (CSV)'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _importing ? null : () => _importStudents(excel: true),
+                  icon: const Icon(Icons.table_view),
+                  label: Text(_importing ? 'Importing...' : 'Import Students (Excel)'),
                 ),
               ]),
             ),
