@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/google_sheet_service.dart';
 import '../attendance_student.dart';
 
 class AttendanceSession {
@@ -28,14 +29,14 @@ class AttendanceSession {
 }
 
 abstract interface class AttendanceRepository {
-  List<AttendanceSession> get sessions;
-
-  List<AttendanceStudent> studentsForSession(String sessionId);
+  Future<List<AttendanceSession>> getSessions();
+  Future<List<AttendanceStudent>> studentsForSession(String sessionId);
+  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted});
+  Future<SeedSummary> seedSampleData();
 }
 
 class MockAttendanceRepository implements AttendanceRepository {
-  @override
-  final List<AttendanceSession> sessions = const [
+  final List<AttendanceSession> _sessions = const [
     AttendanceSession(
       id: 'swp391-se1804',
       subjectCode: 'SWP391',
@@ -75,7 +76,10 @@ class MockAttendanceRepository implements AttendanceRepository {
   ];
 
   @override
-  List<AttendanceStudent> studentsForSession(String sessionId) {
+  Future<List<AttendanceSession>> getSessions() async => _sessions;
+
+  @override
+  Future<List<AttendanceStudent>> studentsForSession(String sessionId) async {
     return [
       _student('HE170124', 'Tran Hoang Nam', 'Male', 1, 'Present in class', Colors.blue),
       _student('HE170318', 'Nguyen Thi Minh Anh', 'Female', 0, '', Colors.teal),
@@ -88,6 +92,12 @@ class MockAttendanceRepository implements AttendanceRepository {
     ];
   }
 
+  @override
+  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {}
+
+  @override
+  Future<SeedSummary> seedSampleData() async => const SeedSummary(subjectCount: 0, classCount: 0, studentsAdded: 0, sessionsAdded: 0, attendanceAdded: 0);
+
   AttendanceStudent _student(String rollNo, String name, String gender, int absences, String note, Color color, {bool present = true}) => AttendanceStudent(
         rollNo: rollNo,
         fullName: name,
@@ -99,4 +109,78 @@ class MockAttendanceRepository implements AttendanceRepository {
         avatarColor: color,
         status: present ? AttendanceState.present : AttendanceState.absent,
       );
+}
+
+class GoogleSheetsAttendanceRepository implements AttendanceRepository {
+  final GoogleSheetService service;
+  List<AttendanceSession> _sessions = const [];
+
+  GoogleSheetsAttendanceRepository(this.service);
+
+  @override
+  Future<List<AttendanceSession>> getSessions() async {
+    final rows = await service.getSchedule();
+    _sessions = rows.map(_toSession).toList();
+    return _sessions;
+  }
+
+  @override
+  Future<List<AttendanceStudent>> studentsForSession(String sessionId) async {
+    final session = _sessions.firstWhere((item) => item.id == sessionId);
+    final students = await service.getStudentsByClass(session.className);
+    final attendance = await service.getAllAttendance();
+    final pastSessionIds = _sessions.where((item) => item.className == session.className && item.sessionNumber < session.sessionNumber).map((item) => item.id).toSet();
+    final currentAttendance = attendance.where((row) => row.sessionId == sessionId);
+    final byStudent = {for (final row in currentAttendance) row.studentId: row};
+    return students.map((student) {
+      final row = byStudent[student.studentId];
+      final previousRows = attendance.where((item) => item.studentId == student.studentId && pastSessionIds.contains(item.sessionId));
+      final previousAbsences = previousRows.where((item) => item.status == 'absent').length;
+      return AttendanceStudent(
+        studentId: student.studentId,
+        rollNo: student.studentCode.isEmpty ? student.studentId : student.studentCode,
+        fullName: student.fullName,
+        major: student.major,
+        gender: student.gender,
+        previousAbsences: previousAbsences,
+        totalSessions: pastSessionIds.length,
+        note: row?.note ?? '',
+        avatarColor: _avatarColor(student.studentId),
+        status: row?.status == 'absent' ? AttendanceState.absent : AttendanceState.present,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {
+    for (final student in students) {
+      await service.upsertAttendance(
+        sessionId: sessionId,
+        studentId: student.studentId.isEmpty ? student.rollNo : student.studentId,
+        status: student.status == AttendanceState.present ? 'present' : 'absent',
+        note: student.note,
+        syncStatus: submitted ? 'submitted' : 'draft',
+      );
+    }
+  }
+
+  @override
+  Future<SeedSummary> seedSampleData() => service.seedSampleData();
+
+  AttendanceSession _toSession(SheetScheduleRow row) => AttendanceSession(
+        id: row.sessionId,
+        subjectCode: row.subjectCode,
+        subjectName: row.subjectName,
+        className: row.classCode,
+        schedule: row.slot,
+        room: row.room,
+        date: row.sessionDate,
+        sessionNumber: row.sessionNo,
+        totalSessions: row.totalSessions,
+        accentColor: _accentColor(row.subjectCode),
+      );
+
+  Color _accentColor(String value) => Color((value.hashCode & 0x00FFFFFF) | 0xFF000000);
+
+  Color _avatarColor(String value) => Colors.primaries[value.hashCode.abs() % Colors.primaries.length];
 }

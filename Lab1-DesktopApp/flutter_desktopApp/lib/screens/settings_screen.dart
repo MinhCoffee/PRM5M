@@ -120,6 +120,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             prefixIcon: Icon(Icons.link),
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            await widget.sheetService.signOut();
+                            if (!mounted) return;
+                            // ignore: use_build_context_synchronously
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Đã đăng xuất. Lần kết nối tiếp theo sẽ yêu cầu chọn tài khoản Google.'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.logout),
+                          label: const Text('Đổi tài khoản Google (Đăng xuất OAuth)'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
                       ],
                     ),
                   ),

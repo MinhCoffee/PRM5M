@@ -16,6 +16,7 @@ Depending on the enabled features, the App may process:
 - Basic technical information required to operate and secure the App, such as error logs and authentication events.
 
 The current desktop prototype uses mock sign-in and mock attendance data. Google account authentication and Google Sheets integration will only process data after those integrations are enabled and authorized.
+The desktop app uses Google OAuth user authentication and reads or writes attendance data only after the signed-in user grants Google Sheets access. Unimplemented navigation areas are not represented as active data-processing features.
 
 ## 2. How We Use Information
 

@@ -10,11 +10,11 @@ class NavBar extends StatelessWidget {
     const items = {
       'Home': '/home',
       'My Classes': '/my-classes',
-      'Take Attendance': '/take-attendance',
       'Timetable': '/timetable',
-      'Reports': '/reports',
-      'FAP Sync': '/fap-sync',
+      'Export': '/fap-sync',
       'AI Assistant': '/ai-assistant',
+      'Take Attendance': '/take-attendance',
+      'Reports': '/reports',
       'Settings': '/settings',
     };
     final currentPath = GoRouterState.of(context).uri.path;

@@ -3,17 +3,19 @@ import 'package:flutter/material.dart';
 enum AttendanceState { present, absent }
 
 class AttendanceStudent {
+  final String studentId;
   final String rollNo;
   final String fullName;
   final String major;
   final String gender;
   final int previousAbsences;
   final int totalSessions;
-  final String note;
+  String note;
   final Color avatarColor;
   AttendanceState status;
 
   AttendanceStudent({
+    this.studentId = '',
     required this.rollNo,
     required this.fullName,
     required this.major,

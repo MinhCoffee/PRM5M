@@ -3,10 +3,18 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/app_shell.dart';
-import 'core/widgets/placeholder_page.dart';
 import 'features/attendance/attendance_browse_page.dart';
 import 'features/attendance/attendance_detail_page.dart';
 import 'features/attendance/data/attendance_repository.dart';
+import 'features/settings/settings_page.dart';
+import 'features/reports/reports_page.dart';
+import 'features/home/home_page.dart';
+import 'features/classes/my_classes_page.dart';
+import 'features/timetable/timetable_page.dart';
+import 'features/export/export_page.dart';
+import 'features/ai_assistant/ai_assistant_page.dart';
+import 'services/attendance_stats_service.dart';
+import 'services/google_sheet_service.dart';
 import 'features/auth/login_page.dart';
 
 Future<void> main() async {
@@ -24,11 +32,13 @@ class AttendanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final repository = MockAttendanceRepository();
+    final sheetService = GoogleSheetService();
+    final repository = GoogleSheetsAttendanceRepository(sheetService);
+    final stats = AttendanceStatsService(sheetService);
     final router = GoRouter(
       initialLocation: '/login',
       routes: [
-        GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+        GoRoute(path: '/login', builder: (context, state) => LoginPage(service: sheetService)),
         ShellRoute(
           builder: (context, state, child) => AppShell(child: child),
           routes: [
@@ -40,19 +50,40 @@ class AttendanceApp extends StatelessWidget {
               ),
             ),
             GoRoute(
+              path: '/home',
+              builder: (context, state) => HomePage(stats: stats, onSessionSelected: (sessionId) => context.go('/attendance/$sessionId')),
+            ),
+            GoRoute(
+              path: '/my-classes',
+              builder: (context, state) => MyClassesPage(stats: stats, onSessionSelected: (sessionId) => context.go('/attendance/$sessionId')),
+            ),
+            GoRoute(
+              path: '/timetable',
+              builder: (context, state) => TimetablePage(stats: stats, onSessionSelected: (sessionId) => context.go('/attendance/$sessionId')),
+            ),
+            GoRoute(
+              path: '/fap-sync',
+              builder: (context, state) => ExportPage(stats: stats),
+            ),
+            GoRoute(
+              path: '/ai-assistant',
+              builder: (context, state) => AiAssistantPage(stats: stats),
+            ),
+            GoRoute(
               path: '/attendance/:sessionId',
               builder: (context, state) => AttendanceDetailPage(
                 sessionId: state.pathParameters['sessionId']!,
                 repository: repository,
               ),
             ),
-            _placeholderRoute('/home', 'Home'),
-            _placeholderRoute('/my-classes', 'My Classes'),
-            _placeholderRoute('/timetable', 'Timetable'),
-            _placeholderRoute('/reports', 'Reports'),
-            _placeholderRoute('/fap-sync', 'FAP Sync'),
-            _placeholderRoute('/ai-assistant', 'AI Assistant'),
-            _placeholderRoute('/settings', 'Settings'),
+            GoRoute(
+              path: '/settings',
+              builder: (context, state) => SettingsPage(stats: stats),
+            ),
+            GoRoute(
+              path: '/reports',
+              builder: (context, state) => ReportsPage(stats: stats),
+            ),
           ],
         ),
       ],
@@ -66,8 +97,4 @@ class AttendanceApp extends StatelessWidget {
     );
   }
 
-  GoRoute _placeholderRoute(String path, String title) => GoRoute(
-        path: path,
-        builder: (context, state) => PlaceholderPage(title: title),
-      );
 }
