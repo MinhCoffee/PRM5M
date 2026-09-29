@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:gsheets/gsheets.dart';
@@ -8,6 +9,7 @@ import 'package:googleapis_auth/auth_io.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../models/attendance_record.dart';
 import '../models/student.dart';
 
@@ -129,13 +131,20 @@ class GoogleSheetService {
     try {
       final clientId = _readEnv('GOOGLE_CLIENT_ID')?.trim() ?? '';
       final clientSecret = _readEnv('GOOGLE_CLIENT_SECRET')?.trim() ?? '';
-      final targetSpreadsheetId = _spreadsheetId ?? _readEnv('GOOGLE_SPREADSHEET_ID') ?? '';
+      final targetSpreadsheetId =
+          _spreadsheetId ?? _readEnv('GOOGLE_SPREADSHEET_ID') ?? '';
 
-      if (clientId.isEmpty || clientSecret.isEmpty || targetSpreadsheetId.isEmpty) {
-        throw const GoogleSheetException('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_SPREADSHEET_ID are required.');
+      if (clientId.isEmpty ||
+          clientSecret.isEmpty ||
+          targetSpreadsheetId.isEmpty) {
+        throw const GoogleSheetException(
+          'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_SPREADSHEET_ID are required.',
+        );
       }
 
-      final oauthClient = await _loadCachedClient(auth.ClientId(clientId, clientSecret)) ?? await _requestUserClient(auth.ClientId(clientId, clientSecret));
+      final oauthClient =
+          await _loadCachedClient(auth.ClientId(clientId, clientSecret)) ??
+          await _requestUserClient(auth.ClientId(clientId, clientSecret));
       await _saveCredentials(oauthClient.credentials);
       _gsheets = GSheets.withClient(oauthClient);
       final ss = await _gsheets!.spreadsheet(targetSpreadsheetId);
@@ -148,10 +157,17 @@ class GoogleSheetService {
         if (_scheduleSheet == null) 'schedule',
         if (_attendanceSheet == null) 'attendance',
       ];
-      if (missing.isNotEmpty) throw GoogleSheetException('Missing required sheet tab(s): ${missing.join(', ')}');
+      if (missing.isNotEmpty)
+        throw GoogleSheetException(
+          'Missing required sheet tab(s): ${missing.join(', ')}',
+        );
       await _validateHeaders(_studentsSheet!, 'students', _studentsHeaders);
       await _validateHeaders(_scheduleSheet!, 'schedule', _scheduleHeaders);
-      await _validateHeaders(_attendanceSheet!, 'attendance', _attendanceHeaders);
+      await _validateHeaders(
+        _attendanceSheet!,
+        'attendance',
+        _attendanceHeaders,
+      );
 
       _isLive = true;
       _initialized = true;
@@ -168,23 +184,42 @@ class GoogleSheetService {
 
   Future<List<Student>> getStudentsByClass(String classId) async {
     final students = await getAllStudents();
-    return students.where((student) => student.classId.toUpperCase() == classId.trim().toUpperCase()).toList();
+    return students
+        .where(
+          (student) =>
+              student.classId.toUpperCase() == classId.trim().toUpperCase(),
+        )
+        .toList();
   }
 
   Future<List<Student>> getAllStudents() async {
     await _requireLive();
     try {
-      final rows = await _readRows(_studentsSheet!, 'students', _studentsHeaders);
-      return rows.map((row) => Student(
-        studentId: _value(row, 'student_id'),
-        studentCode: _value(row, 'student_code'),
-        studentName: _value(row, 'full_name'),
-        classId: _value(row, 'class_code'),
-        email: _value(row, 'email'),
-        gender: _value(row, 'gender'),
-        major: _value(row, 'major'),
-        photoUrl: _value(row, 'photo_url'),
-      )).where((student) => student.studentId.isNotEmpty && student.studentName.isNotEmpty && student.classId.isNotEmpty).toList();
+      final rows = await _readRows(
+        _studentsSheet!,
+        'students',
+        _studentsHeaders,
+      );
+      return rows
+          .map(
+            (row) => Student(
+              studentId: _value(row, 'student_id'),
+              studentCode: _value(row, 'student_code'),
+              studentName: _value(row, 'full_name'),
+              classId: _value(row, 'class_code'),
+              email: _value(row, 'email'),
+              gender: _value(row, 'gender'),
+              major: _value(row, 'major'),
+              photoUrl: _value(row, 'photo_url'),
+            ),
+          )
+          .where(
+            (student) =>
+                student.studentId.isNotEmpty &&
+                student.studentName.isNotEmpty &&
+                student.classId.isNotEmpty,
+          )
+          .toList();
     } catch (e) {
       throw GoogleSheetException('Could not read students: $e');
     }
@@ -193,18 +228,31 @@ class GoogleSheetService {
   Future<List<SheetScheduleRow>> getSchedule() async {
     await _requireLive();
     try {
-      final rows = await _readRows(_scheduleSheet!, 'schedule', _scheduleHeaders);
-      return rows.map((row) {
-        final rawDate = _value(row, 'session_date');
-        final cleanDate = rawDate.startsWith('\'') ? rawDate.substring(1) : rawDate;
-        return SheetScheduleRow(
-          sessionId: _value(row, 'session_id'), classCode: _value(row, 'class_code'),
-          subjectCode: _value(row, 'subject_code'), subjectName: _value(row, 'subject_name'),
-          sessionDate: cleanDate, slot: _value(row, 'slot'), room: _value(row, 'room'),
-          sessionNo: int.tryParse(_value(row, 'session_no')) ?? 0,
-          totalSessions: int.tryParse(_value(row, 'total_sessions')) ?? 0,
-        );
-      }).where((row) => row.sessionId.isNotEmpty && row.classCode.isNotEmpty).toList();
+      final rows = await _readRows(
+        _scheduleSheet!,
+        'schedule',
+        _scheduleHeaders,
+      );
+      return rows
+          .map((row) {
+            final rawDate = _value(row, 'session_date');
+            final cleanDate = rawDate.startsWith('\'')
+                ? rawDate.substring(1)
+                : rawDate;
+            return SheetScheduleRow(
+              sessionId: _value(row, 'session_id'),
+              classCode: _value(row, 'class_code'),
+              subjectCode: _value(row, 'subject_code'),
+              subjectName: _value(row, 'subject_name'),
+              sessionDate: cleanDate,
+              slot: _value(row, 'slot'),
+              room: _value(row, 'room'),
+              sessionNo: int.tryParse(_value(row, 'session_no')) ?? 0,
+              totalSessions: int.tryParse(_value(row, 'total_sessions')) ?? 0,
+            );
+          })
+          .where((row) => row.sessionId.isNotEmpty && row.classCode.isNotEmpty)
+          .toList();
     } catch (e) {
       throw GoogleSheetException('Could not read schedule: $e');
     }
@@ -218,25 +266,67 @@ class GoogleSheetService {
   Future<List<SheetAttendanceRow>> getAllAttendance() async {
     await _requireLive();
     try {
-      final rows = await _readRows(_attendanceSheet!, 'attendance', _attendanceHeaders);
-      return rows.map((row) => SheetAttendanceRow(
-        attendanceId: _value(row, 'attendance_id'), sessionId: _value(row, 'session_id'),
-        studentId: _value(row, 'student_id'), status: _value(row, 'status'), note: _value(row, 'note'),
-        syncStatus: _value(row, 'sync_status'), updatedAt: _value(row, 'updated_at'),
-      )).toList();
+      final rows = await _readRows(
+        _attendanceSheet!,
+        'attendance',
+        _attendanceHeaders,
+      );
+      return rows
+          .map(
+            (row) => SheetAttendanceRow(
+              attendanceId: _value(row, 'attendance_id'),
+              sessionId: _value(row, 'session_id'),
+              studentId: _value(row, 'student_id'),
+              status: _value(row, 'status'),
+              note: _value(row, 'note'),
+              syncStatus: _value(row, 'sync_status'),
+              updatedAt: _value(row, 'updated_at'),
+            ),
+          )
+          .toList();
     } catch (e) {
       throw GoogleSheetException('Could not read attendance: $e');
     }
   }
 
-  Future<void> upsertAttendance({required String sessionId, required String studentId, required String status, required String note, required String syncStatus}) async {
+  Future<void> upsertAttendance({
+    required String sessionId,
+    required String studentId,
+    required String status,
+    required String note,
+    required String syncStatus,
+  }) async {
     await _requireLive();
-    if (status != 'present' && status != 'absent') throw const GoogleSheetException('Attendance status must be present or absent.');
-    if (syncStatus != 'draft' && syncStatus != 'submitted') throw const GoogleSheetException('Sync status must be draft or submitted.');
+    if (status != 'present' && status != 'absent')
+      throw const GoogleSheetException(
+        'Attendance status must be present or absent.',
+      );
+    if (syncStatus != 'draft' && syncStatus != 'submitted')
+      throw const GoogleSheetException(
+        'Sync status must be draft or submitted.',
+      );
     try {
-      final rows = await _readRows(_attendanceSheet!, 'attendance', _attendanceHeaders);
-      final rowIndex = rows.indexWhere((row) => _value(row, 'session_id') == sessionId && _value(row, 'student_id') == studentId) + 2;
-      final values = ['attendance-$sessionId-$studentId', sessionId, studentId, status, note, syncStatus, DateTime.now().toUtc().toIso8601String()];
+      final rows = await _readRows(
+        _attendanceSheet!,
+        'attendance',
+        _attendanceHeaders,
+      );
+      final rowIndex =
+          rows.indexWhere(
+            (row) =>
+                _value(row, 'session_id') == sessionId &&
+                _value(row, 'student_id') == studentId,
+          ) +
+          2;
+      final values = [
+        'attendance-$sessionId-$studentId',
+        sessionId,
+        studentId,
+        status,
+        note,
+        syncStatus,
+        DateTime.now().toUtc().toIso8601String(),
+      ];
       if (rowIndex == 1) {
         await _attendanceSheet!.values.appendRow(values);
       } else {
@@ -247,10 +337,54 @@ class GoogleSheetService {
     }
   }
 
-  Future<void> appendStudents(List<Student> newStudents) async {
+  Future<int> appendStudents(List<Student> newStudents) async {
     await _requireLive();
     try {
-      await _studentsSheet!.values.appendRows(newStudents.map((s) => [s.studentId, s.studentCode, s.fullName, s.email, s.classId, s.gender, s.major, s.photoUrl]).toList());
+      final existingRows = await _readRows(
+        _studentsSheet!,
+        'students',
+        _studentsHeaders,
+      );
+      final existingIds = existingRows
+          .map((row) => _value(row, 'student_id').toUpperCase())
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final existingCodes = existingRows
+          .map((row) => _value(row, 'student_code').toUpperCase())
+          .where((code) => code.isNotEmpty)
+          .toSet();
+      final rows = <List<String>>[];
+      final seenIds = <String>{};
+      for (final student in newStudents) {
+        final studentId = student.studentId.trim();
+        final studentCode =
+            (student.studentCode.isEmpty ? studentId : student.studentCode)
+                .trim();
+        final idKey = studentId.toUpperCase();
+        final codeKey = studentCode.toUpperCase();
+        if (studentId.isEmpty ||
+            student.fullName.trim().isEmpty ||
+            student.classId.trim().isEmpty)
+          continue;
+        if (existingIds.contains(idKey) ||
+            existingCodes.contains(codeKey) ||
+            seenIds.contains(idKey))
+          continue;
+        seenIds.add(idKey);
+        rows.add([
+          studentId,
+          studentCode,
+          student.fullName.trim(),
+          student.email.trim(),
+          student.classId.trim(),
+          student.gender.trim(),
+          student.major.trim(),
+          student.photoUrl.trim(),
+        ]);
+      }
+      if (rows.isEmpty) return 0;
+      await _studentsSheet!.values.appendRows(rows);
+      return rows.length;
     } catch (e) {
       throw GoogleSheetException('Could not append students: $e');
     }
@@ -310,7 +444,10 @@ class GoogleSheetService {
       final subjects = subjectPool.take(subjectCount).toList();
 
       // For each subject, create 2-3 classes
-      final classDefinitions = <Map<String, String>>[];  // {classCode, subjectCode, subjectName, major}
+      final classDefinitions =
+          <
+            Map<String, String>
+          >[]; // {classCode, subjectCode, subjectName, major}
       var classSerial = 1801;
       for (final subject in subjects) {
         final numClasses = 2 + rng.nextInt(2); // 2 or 3
@@ -328,29 +465,110 @@ class GoogleSheetService {
       // ── 3. Generate students per class ──────────────────────────────────
       // Vietnamese name components for varied random generation
       const lastNames = [
-        'Nguyen', 'Tran', 'Le', 'Pham', 'Hoang', 'Huynh', 'Phan', 'Vu',
-        'Vo', 'Dang', 'Bui', 'Do', 'Ho', 'Ngo', 'Duong', 'Ly',
-        'Trinh', 'Dinh', 'Luong', 'Mai', 'Lam', 'Ha', 'Cao', 'Ta',
+        'Nguyen',
+        'Tran',
+        'Le',
+        'Pham',
+        'Hoang',
+        'Huynh',
+        'Phan',
+        'Vu',
+        'Vo',
+        'Dang',
+        'Bui',
+        'Do',
+        'Ho',
+        'Ngo',
+        'Duong',
+        'Ly',
+        'Trinh',
+        'Dinh',
+        'Luong',
+        'Mai',
+        'Lam',
+        'Ha',
+        'Cao',
+        'Ta',
       ];
       const middleNames = [
-        'Minh', 'Thanh', 'Quoc', 'Ngoc', 'Hoang', 'Duc', 'Thi',
-        'Thu', 'Gia', 'Hai', 'Khanh', 'Xuan', 'Bao', 'Phuong',
-        'Tuan', 'Mai', 'Duy', 'Anh', 'Van', 'Kim', 'Hong', 'Huu',
+        'Minh',
+        'Thanh',
+        'Quoc',
+        'Ngoc',
+        'Hoang',
+        'Duc',
+        'Thi',
+        'Thu',
+        'Gia',
+        'Hai',
+        'Khanh',
+        'Xuan',
+        'Bao',
+        'Phuong',
+        'Tuan',
+        'Mai',
+        'Duy',
+        'Anh',
+        'Van',
+        'Kim',
+        'Hong',
+        'Huu',
       ];
       const givenNamesMale = [
-        'Anh', 'Bao', 'Dat', 'Dung', 'Hieu', 'Hung', 'Huy', 'Khai',
-        'Kiet', 'Khoa', 'Long', 'Minh', 'Nam', 'Phuc', 'Quan',
-        'Son', 'Tai', 'Thinh', 'Tien', 'Tri', 'Trung', 'Tuan', 'Vu',
+        'Anh',
+        'Bao',
+        'Dat',
+        'Dung',
+        'Hieu',
+        'Hung',
+        'Huy',
+        'Khai',
+        'Kiet',
+        'Khoa',
+        'Long',
+        'Minh',
+        'Nam',
+        'Phuc',
+        'Quan',
+        'Son',
+        'Tai',
+        'Thinh',
+        'Tien',
+        'Tri',
+        'Trung',
+        'Tuan',
+        'Vu',
       ];
       const givenNamesFemale = [
-        'Anh', 'Chi', 'Chau', 'Diem', 'Giang', 'Ha', 'Han', 'Hang',
-        'Hanh', 'Huong', 'Lan', 'Linh', 'Mai', 'My', 'Nhi',
-        'Phuong', 'Thao', 'Trang', 'Trinh', 'Uyen', 'Van', 'Vy', 'Yen',
+        'Anh',
+        'Chi',
+        'Chau',
+        'Diem',
+        'Giang',
+        'Ha',
+        'Han',
+        'Hang',
+        'Hanh',
+        'Huong',
+        'Lan',
+        'Linh',
+        'Mai',
+        'My',
+        'Nhi',
+        'Phuong',
+        'Thao',
+        'Trang',
+        'Trinh',
+        'Uyen',
+        'Van',
+        'Vy',
+        'Yen',
       ];
 
       final usedStudentCodes = <String>{};
       final allStudentRows = <List<String>>[]; // raw rows for sheet
-      final studentsByClass = <String, List<List<String>>>{}; // classCode → students
+      final studentsByClass =
+          <String, List<List<String>>>{}; // classCode → students
 
       String uniqueStudentCode() {
         String code;
@@ -380,7 +598,9 @@ class GoogleSheetService {
           // ~10-20% cross-enrolled from another major
           final isCrossEnrolled = rng.nextDouble() < 0.15;
           final major = isCrossEnrolled
-              ? allMajors.where((m) => m != primaryMajor).toList()[rng.nextInt(allMajors.length - 1)]
+              ? allMajors.where((m) => m != primaryMajor).toList()[rng.nextInt(
+                  allMajors.length - 1,
+                )]
               : primaryMajor;
           final studentCode = uniqueStudentCode();
           final studentId = 'STU-${globalStudentId++}';
@@ -393,7 +613,7 @@ class GoogleSheetService {
             classCode,
             gender,
             major,
-            '',  // photo_url
+            '', // photo_url
           ];
           classStudents.add(row);
           allStudentRows.add(row);
@@ -415,11 +635,27 @@ class GoogleSheetService {
       const totalSessions = 30;
       // Anchor ~7.5 weeks back so ~15 sessions are past and ~15 are future
       final anchorDate = today.subtract(const Duration(days: 52));
-      const slotLabels = ['Slot 1', 'Slot 2', 'Slot 3', 'Slot 4', 'Slot 5', 'Slot 6'];
-      const rooms = ['Room 301', 'Room 302', 'Room 303', 'Room 401', 'Room 402', 'Lab A-201', 'Lab B-102'];
+      const slotLabels = [
+        'Slot 1',
+        'Slot 2',
+        'Slot 3',
+        'Slot 4',
+        'Slot 5',
+        'Slot 6',
+      ];
+      const rooms = [
+        'Room 301',
+        'Room 302',
+        'Room 303',
+        'Room 401',
+        'Room 402',
+        'Lab A-201',
+        'Lab B-102',
+      ];
 
       final allScheduleRows = <List<String>>[];
-      final scheduleByClass = <String, List<List<String>>>{}; // classCode → sessions
+      final scheduleByClass =
+          <String, List<List<String>>>{}; // classCode → sessions
 
       var globalSessionId = 1;
       for (var ci = 0; ci < classDefinitions.length; ci++) {
@@ -441,7 +677,8 @@ class GoogleSheetService {
         final classSessions = <List<String>>[];
         for (var sn = 1; sn <= sessionDates.length; sn++) {
           final date = sessionDates[sn - 1];
-          final dateText = '\'${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+          final dateText =
+              '\'${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
           final sessionId = 'SES-${globalSessionId++}';
           final row = [
             sessionId,
@@ -514,7 +751,7 @@ class GoogleSheetService {
             final isAbsent = absentIndices.contains(hi);
             allAttendanceRows.add([
               'ATT-${globalAttId++}',
-              session[0],  // session_id
+              session[0], // session_id
               studentId,
               isAbsent ? 'absent' : 'present',
               '',
@@ -537,7 +774,11 @@ class GoogleSheetService {
         // Run batch updates concurrently in chunks of 1000
         for (var i = 0; i < allAttendanceRows.length; i += 1000) {
           final end = (i + 1000).clamp(0, allAttendanceRows.length);
-          futures.add(_attendanceSheet!.values.appendRows(allAttendanceRows.sublist(i, end)));
+          futures.add(
+            _attendanceSheet!.values.appendRows(
+              allAttendanceRows.sublist(i, end),
+            ),
+          );
         }
       }
       await Future.wait(futures);
@@ -554,11 +795,15 @@ class GoogleSheetService {
     }
   }
 
-  Future<auth.AutoRefreshingAuthClient?> _loadCachedClient(auth.ClientId clientId) async {
+  Future<auth.AutoRefreshingAuthClient?> _loadCachedClient(
+    auth.ClientId clientId,
+  ) async {
     try {
       final file = await _credentialsFile();
       if (!await file.exists()) return null;
-      final credentials = auth.AccessCredentials.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+      final credentials = auth.AccessCredentials.fromJson(
+        jsonDecode(await file.readAsString()) as Map<String, dynamic>,
+      );
       if (credentials.refreshToken == null) return null;
       return auth.autoRefreshingClient(clientId, credentials, http.Client());
     } catch (_) {
@@ -566,7 +811,9 @@ class GoogleSheetService {
     }
   }
 
-  Future<auth.AutoRefreshingAuthClient> _requestUserClient(auth.ClientId clientId) async {
+  Future<auth.AutoRefreshingAuthClient> _requestUserClient(
+    auth.ClientId clientId,
+  ) async {
     final client = await auth.clientViaUserConsent(
       clientId,
       const ['https://www.googleapis.com/auth/spreadsheets'],
@@ -574,13 +821,16 @@ class GoogleSheetService {
         // Append prompt=select_account so Google always shows the account picker
         final uri = Uri.parse(authorizationUrl);
         final modifiedUri = uri.replace(
-          queryParameters: {
-            ...uri.queryParameters,
-            'prompt': 'select_account',
-          },
+          queryParameters: {...uri.queryParameters, 'prompt': 'select_account'},
         );
-        final opened = await launchUrl(modifiedUri, mode: LaunchMode.externalApplication);
-        if (!opened) throw const GoogleSheetException('Could not open the Google authorization page.');
+        final opened = await launchUrl(
+          modifiedUri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened)
+          throw const GoogleSheetException(
+            'Could not open the Google authorization page.',
+          );
       },
     );
     return client;
@@ -595,32 +845,51 @@ class GoogleSheetService {
 
   Future<File> _credentialsFile() async {
     final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}${Platform.pathSeparator}fap_attendance_oauth.json');
+    return File(
+      '${directory.path}${Platform.pathSeparator}fap_attendance_oauth.json',
+    );
   }
 
   Future<void> _requireLive() async {
-    if (!await init()) throw GoogleSheetException(_lastError ?? 'Google Sheets is unavailable.');
+    if (!await init())
+      throw GoogleSheetException(_lastError ?? 'Google Sheets is unavailable.');
   }
 
-  Future<void> _validateHeaders(Worksheet sheet, String name, List<String> required) async {
+  Future<void> _validateHeaders(
+    Worksheet sheet,
+    String name,
+    List<String> required,
+  ) async {
     final rows = await sheet.values.allRows(fromRow: 1, count: 1, fill: true);
-    final headers = rows.isEmpty ? <String>{} : rows.first.map((key) => key.trim()).toSet();
+    final headers = rows.isEmpty
+        ? <String>{}
+        : rows.first.map((key) => key.trim()).toSet();
     final missing = required.where((key) => !headers.contains(key)).toList();
     if (missing.isNotEmpty) {
-      throw GoogleSheetException('Sheet "$name" is missing required column(s): ${missing.join(', ')}');
+      throw GoogleSheetException(
+        'Sheet "$name" is missing required column(s): ${missing.join(', ')}',
+      );
     }
   }
 
-  Future<List<Map<String, String>>> _readRows(Worksheet sheet, String name, List<String> requiredHeaders) async {
+  Future<List<Map<String, String>>> _readRows(
+    Worksheet sheet,
+    String name,
+    List<String> requiredHeaders,
+  ) async {
     final rawRows = await sheet.values.allRows(fromRow: 1, fill: false);
     if (rawRows.isEmpty) return [];
 
     final physicalHeaders = rawRows.first.map((key) => key.trim()).toList();
     final headerSet = physicalHeaders.toSet();
-    
-    final missing = requiredHeaders.where((key) => !headerSet.contains(key)).toList();
+
+    final missing = requiredHeaders
+        .where((key) => !headerSet.contains(key))
+        .toList();
     if (missing.isNotEmpty) {
-      throw GoogleSheetException('Sheet "$name" is missing required column(s): ${missing.join(', ')}');
+      throw GoogleSheetException(
+        'Sheet "$name" is missing required column(s): ${missing.join(', ')}',
+      );
     }
 
     final rows = <Map<String, String>>[];
@@ -631,7 +900,7 @@ class GoogleSheetService {
         values[j] = rawRow[j].trim();
       }
       if (values.every((value) => value.isEmpty)) continue;
-      
+
       final rowMap = <String, String>{};
       for (var j = 0; j < physicalHeaders.length; j++) {
         rowMap[physicalHeaders[j]] = values[j];
@@ -641,9 +910,36 @@ class GoogleSheetService {
     return rows;
   }
 
-  static const _studentsHeaders = ['student_id', 'student_code', 'full_name', 'email', 'class_code', 'gender', 'major', 'photo_url'];
-  static const _scheduleHeaders = ['session_id', 'class_code', 'subject_code', 'subject_name', 'session_date', 'slot', 'room', 'session_no', 'total_sessions'];
-  static const _attendanceHeaders = ['attendance_id', 'session_id', 'student_id', 'status', 'note', 'sync_status', 'updated_at'];
+  static const _studentsHeaders = [
+    'student_id',
+    'student_code',
+    'full_name',
+    'email',
+    'class_code',
+    'gender',
+    'major',
+    'photo_url',
+  ];
+  static const _scheduleHeaders = [
+    'session_id',
+    'class_code',
+    'subject_code',
+    'subject_name',
+    'session_date',
+    'slot',
+    'room',
+    'session_no',
+    'total_sessions',
+  ];
+  static const _attendanceHeaders = [
+    'attendance_id',
+    'session_id',
+    'student_id',
+    'status',
+    'note',
+    'sync_status',
+    'updated_at',
+  ];
 
   String _value(Map<String, String> row, String key) => row[key]?.trim() ?? '';
 }

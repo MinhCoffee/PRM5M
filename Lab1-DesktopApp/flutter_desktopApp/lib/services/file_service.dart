@@ -1,16 +1,21 @@
 import 'dart:io';
+
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as excel_lib;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../models/attendance_record.dart';
 import '../models/student.dart';
 
 class FileService {
   /// Import student list from CSV file
-  Future<List<Student>> importStudentsFromCsv(String classId, [String? filePath]) async {
+  Future<List<Student>> importStudentsFromCsv(
+    String classId, [
+    String? filePath,
+  ]) async {
     try {
       String? path = filePath;
       if (path == null) {
@@ -25,29 +30,9 @@ class FileService {
 
       final file = File(path);
       final content = await file.readAsString();
-      final rows = const CsvToListConverter().convert(content);
-
-      final students = <Student>[];
-      for (var i = 1; i < rows.length; i++) {
-        final row = rows[i];
-        if (row.isEmpty || row.length < 2) continue;
-        final studentId = row[0].toString().trim();
-        final studentName = row[1].toString().trim();
-        final email = row.length > 2 ? row[2].toString().trim() : '';
-        final parsedClassId = row.length > 3 && row[3].toString().trim().isNotEmpty
-            ? row[3].toString().trim()
-            : classId;
-
-        if (studentId.isNotEmpty && studentName.isNotEmpty) {
-          students.add(Student(
-            studentId: studentId,
-            studentName: studentName,
-            classId: parsedClassId,
-            email: email,
-          ));
-        }
-      }
-      return students;
+      final rows = const CsvToListConverter(shouldParseNumbers: false)
+          .convert(content);
+      return _studentsFromRows(rows, classId);
     } catch (e) {
       debugPrint('Error importing CSV: $e');
       rethrow;
@@ -55,7 +40,10 @@ class FileService {
   }
 
   /// Import student list from Excel (.xlsx) file (FAP export)
-  Future<List<Student>> importStudentsFromExcel(String classId, [String? filePath]) async {
+  Future<List<Student>> importStudentsFromExcel(
+    String classId, [
+    String? filePath,
+  ]) async {
     try {
       String? path = filePath;
       if (path == null) {
@@ -74,30 +62,13 @@ class FileService {
 
       final sheetName = excelFile.tables.keys.first;
       final sheet = excelFile.tables[sheetName]!;
-
-      final students = <Student>[];
-      // Skip row 0 (Header)
-      for (var i = 1; i < sheet.maxRows; i++) {
-        final row = sheet.row(i);
-        if (row.isEmpty) continue;
-
-        final studentId = row[0]?.value?.toString().trim() ?? '';
-        final studentName = row[1]?.value?.toString().trim() ?? '';
-        final email = row.length > 2 ? (row[2]?.value?.toString().trim() ?? '') : '';
-        final parsedClassId = row.length > 3 && (row[3]?.value?.toString().trim().isNotEmpty ?? false)
-            ? row[3]!.value!.toString().trim()
-            : classId;
-
-        if (studentId.isNotEmpty && studentName.isNotEmpty) {
-          students.add(Student(
-            studentId: studentId,
-            studentName: studentName,
-            classId: parsedClassId,
-            email: email,
-          ));
-        }
-      }
-      return students;
+      final rows = List<List<dynamic>>.generate(sheet.maxRows, (rowIndex) {
+        return sheet
+            .row(rowIndex)
+            .map((cell) => cell?.value?.toString() ?? '')
+            .toList();
+      });
+      return _studentsFromRows(rows, classId);
     } catch (e) {
       debugPrint('Error importing Excel: $e');
       rethrow;
@@ -129,13 +100,43 @@ class FileService {
   }
 
   /// Backup/fallback export method to Documents directory
-  Future<String> exportReportToDocuments(String reportText, String classId) async {
+  Future<String> exportReportToDocuments(
+    String reportText,
+    String classId,
+  ) async {
     final directory = await getApplicationDocumentsDirectory();
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final fileName = 'BaoCao_DiemDanh_${classId}_$timestamp.txt';
     final file = File('${directory.path}/$fileName');
     await file.writeAsString(reportText);
     return file.path;
+  }
+
+  Future<String?> exportCsvRows({
+    required String dialogTitle,
+    required String fileName,
+    required List<List<dynamic>> rows,
+  }) async {
+    final csvContent = const ListToCsvConverter().convert(rows);
+    try {
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+
+      if (outputPath == null) return null;
+
+      final file = File(outputPath);
+      await file.writeAsString(csvContent);
+      return outputPath;
+    } catch (e) {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}${Platform.pathSeparator}$fileName');
+      await file.writeAsString(csvContent);
+      return file.path;
+    }
   }
 
   /// Export raw attendance records to CSV file
@@ -147,7 +148,15 @@ class FileService {
     final studentMap = {for (final s in students) s.studentId: s.studentName};
 
     final List<List<dynamic>> rows = [
-      ['SessionID', 'Date', 'ClassID', 'StudentID', 'StudentName', 'Status', 'Note'],
+      [
+        'SessionID',
+        'Date',
+        'ClassID',
+        'StudentID',
+        'StudentName',
+        'Status',
+        'Note',
+      ],
     ];
 
     for (final r in records) {
@@ -179,4 +188,109 @@ class FileService {
     await file.writeAsString(csvContent);
     return outputPath;
   }
+
+  List<Student> _studentsFromRows(
+    List<List<dynamic>> rows,
+    String fallbackClassId,
+  ) {
+    final nonEmptyRows = rows
+        .where((row) => row.any((cell) => _cell(cell).isNotEmpty))
+        .toList();
+    if (nonEmptyRows.isEmpty) return [];
+
+    final headers = nonEmptyRows.first.map(_headerKey).toList();
+    final hasHeader = headers.any(_knownStudentHeader);
+    final dataRows = hasHeader ? nonEmptyRows.skip(1) : nonEmptyRows;
+    final seenIds = <String>{};
+    final students = <Student>[];
+
+    for (final row in dataRows) {
+      final studentId = hasHeader
+          ? _valueFor(row, headers, const ['studentid', 'id'])
+          : _valueAt(row, 0);
+      final studentCode = hasHeader
+          ? _valueFor(row, headers, const [
+              'studentcode',
+              'rollnumber',
+              'rollno',
+              'roll',
+            ])
+          : studentId;
+      final studentName = hasHeader
+          ? _valueFor(row, headers, const ['fullname', 'studentname', 'name'])
+          : _valueAt(row, 1);
+      final email = hasHeader
+          ? _valueFor(row, headers, const ['email', 'mail'])
+          : _valueAt(row, 2);
+      final parsedClassId = hasHeader
+          ? _valueFor(row, headers, const ['classcode', 'classid', 'class'])
+          : _valueAt(row, 3);
+      final gender = hasHeader
+          ? _valueFor(row, headers, const ['gender', 'sex'])
+          : _valueAt(row, 4);
+      final major = hasHeader
+          ? _valueFor(row, headers, const ['major'])
+          : _valueAt(row, 5);
+      final photoUrl = hasHeader
+          ? _valueFor(row, headers, const ['photourl', 'photo'])
+          : _valueAt(row, 6);
+
+      final resolvedId = studentId.isNotEmpty ? studentId : studentCode;
+      final resolvedCode = studentCode.isNotEmpty ? studentCode : resolvedId;
+      final resolvedClass = parsedClassId.isNotEmpty
+          ? parsedClassId
+          : fallbackClassId;
+      final dedupeKey = resolvedId.toUpperCase();
+
+      if (resolvedId.isEmpty ||
+          studentName.isEmpty ||
+          resolvedClass.isEmpty ||
+          seenIds.contains(dedupeKey))
+        continue;
+      seenIds.add(dedupeKey);
+      students.add(
+        Student(
+          studentId: resolvedId,
+          studentCode: resolvedCode,
+          studentName: studentName,
+          classId: resolvedClass,
+          email: email,
+          gender: gender,
+          major: major,
+          photoUrl: photoUrl,
+        ),
+      );
+    }
+
+    return students;
+  }
+
+  bool _knownStudentHeader(String value) => const {
+    'studentid',
+    'studentcode',
+    'rollnumber',
+    'rollno',
+    'fullname',
+    'studentname',
+    'classcode',
+    'classid',
+  }.contains(value);
+
+  String _valueFor(List<dynamic> row, List<String> headers, List<String> keys) {
+    for (final key in keys) {
+      final index = headers.indexOf(key);
+      if (index >= 0) return _valueAt(row, index);
+    }
+    return '';
+  }
+
+  String _valueAt(List<dynamic> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    return _cell(row[index]);
+  }
+
+  String _cell(Object? value) => value?.toString().trim() ?? '';
+
+  String _headerKey(Object? value) =>
+      _cell(value).toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 }

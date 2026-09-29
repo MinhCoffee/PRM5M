@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/student.dart';
 import 'google_sheet_service.dart';
 
@@ -8,19 +9,19 @@ enum SessionStatus { notTaken, inProgress, taken, overdueNotTaken }
 
 extension StudentRiskStatusLabel on StudentRiskStatus {
   String get value => switch (this) {
-        StudentRiskStatus.ok => 'ok',
-        StudentRiskStatus.warning => 'warning',
-        StudentRiskStatus.banned => 'banned',
-      };
+    StudentRiskStatus.ok => 'ok',
+    StudentRiskStatus.warning => 'warning',
+    StudentRiskStatus.banned => 'banned',
+  };
 }
 
 extension SessionStatusLabel on SessionStatus {
   String get value => switch (this) {
-        SessionStatus.notTaken => 'Upcoming',
-        SessionStatus.inProgress => 'Taking Attendance',
-        SessionStatus.taken => 'Completed',
-        SessionStatus.overdueNotTaken => 'Missing Attendance',
-      };
+    SessionStatus.notTaken => 'Upcoming',
+    SessionStatus.inProgress => 'Taking Attendance',
+    SessionStatus.taken => 'Completed',
+    SessionStatus.overdueNotTaken => 'Missing Attendance',
+  };
 }
 
 class AttendanceStudentStats {
@@ -91,9 +92,14 @@ class AttendanceStatsService {
     _loaded = true;
   }
 
-  Future<void> setThresholds({required double warn, required double ban}) async {
+  Future<void> setThresholds({
+    required double warn,
+    required double ban,
+  }) async {
     if (warn < 0 || ban < 0 || warn > 1 || ban > 1 || warn >= ban) {
-      throw ArgumentError('Warn threshold must be lower than ban threshold and both must be between 0% and 100%.');
+      throw ArgumentError(
+        'Warn threshold must be lower than ban threshold and both must be between 0% and 100%.',
+      );
     }
     final preferences = await SharedPreferences.getInstance();
     await preferences.setDouble(_warnKey, warn);
@@ -109,8 +115,21 @@ class AttendanceStatsService {
   }
 
   double absenceRate(String studentId, String classCode) {
-    final classSessionIds = sessions.where((session) => session.classCode == classCode && _isOnOrBeforeToday(session.sessionDate)).map((session) => session.sessionId).toSet();
-    final rows = attendance.where((row) => row.studentId == studentId && classSessionIds.contains(row.sessionId)).toList();
+    final classSessionIds = sessions
+        .where(
+          (session) =>
+              session.classCode == classCode &&
+              _isOnOrBeforeToday(session.sessionDate),
+        )
+        .map((session) => session.sessionId)
+        .toSet();
+    final rows = attendance
+        .where(
+          (row) =>
+              row.studentId == studentId &&
+              classSessionIds.contains(row.sessionId),
+        )
+        .toList();
     if (rows.isEmpty) return 0;
     return rows.where((row) => row.status == 'absent').length / rows.length;
   }
@@ -122,38 +141,62 @@ class AttendanceStatsService {
   }
 
   SessionStatus sessionStatus(SheetScheduleRow session) {
-    // Per spec: isHeld = dateOnly(date) <= dateOnly(now). Slot/time does NOT matter.
-    if (!_isOnOrBeforeToday(session.sessionDate)) return SessionStatus.notTaken;
-    final rows = attendance.where((row) => row.sessionId == session.sessionId).toList();
-    if (rows.isEmpty) return SessionStatus.overdueNotTaken;
+    final sessionDate = DateTime.tryParse(session.sessionDate);
+    if (sessionDate == null) return SessionStatus.notTaken;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final sessionDay = DateTime(
+      sessionDate.year,
+      sessionDate.month,
+      sessionDate.day,
+    );
+    if (sessionDay.isAfter(today)) return SessionStatus.notTaken;
+
+    final rows = attendance
+        .where((row) => row.sessionId == session.sessionId)
+        .toList();
+    if (rows.isEmpty) {
+      return sessionDay == today
+          ? SessionStatus.inProgress
+          : SessionStatus.overdueNotTaken;
+    }
+    if (rows.any((row) => row.syncStatus == 'draft'))
+      return SessionStatus.inProgress;
     return SessionStatus.taken;
   }
 
   double classProgress(String classCode) {
-    final classSessions = sessions.where((session) => session.classCode == classCode).toList();
+    final classSessions = sessions
+        .where((session) => session.classCode == classCode)
+        .toList();
     if (classSessions.isEmpty) return 0;
     final totalSessions = classSessions
         .map((session) => session.totalSessions)
         .fold<int>(0, (max, value) => value > max ? value : max);
     if (totalSessions == 0) return 0;
     // Count sessions that are held (date <= today) — not just sessions with attendance rows
-    final heldCount =
-        classSessions.where((session) => _isOnOrBeforeToday(session.sessionDate)).length;
+    final heldCount = classSessions
+        .where((session) => _isOnOrBeforeToday(session.sessionDate))
+        .length;
     return (heldCount / totalSessions).clamp(0, 1).toDouble();
   }
 
   AttendanceStudentStats studentStats(Student student, {String? classCode}) {
     final selectedClass = classCode ?? student.classId;
     final classSessionIds = sessions
-        .where((session) =>
-            session.classCode == selectedClass &&
-            _isOnOrBeforeToday(session.sessionDate))
+        .where(
+          (session) =>
+              session.classCode == selectedClass &&
+              _isOnOrBeforeToday(session.sessionDate),
+        )
         .map((session) => session.sessionId)
         .toSet();
     final rows = attendance
-        .where((row) =>
-            row.studentId == student.studentId &&
-            classSessionIds.contains(row.sessionId))
+        .where(
+          (row) =>
+              row.studentId == student.studentId &&
+              classSessionIds.contains(row.sessionId),
+        )
         .toList();
     final absentCount = rows.where((row) => row.status == 'absent').length;
     final rate = rows.isEmpty ? 0.0 : absentCount / rows.length;
@@ -166,15 +209,16 @@ class AttendanceStatsService {
     );
   }
 
-  List<AttendanceStudentStats> statsForClass(String classCode) =>
-      students.where((student) => student.classId == classCode).map(studentStats).toList();
+  List<AttendanceStudentStats> statsForClass(String classCode) => students
+      .where((student) => student.classId == classCode)
+      .map(studentStats)
+      .toList();
 
   List<AttendanceClassStats> classStats() {
     final classCodes = {
       ...students.map((student) => student.classId),
       ...sessions.map((session) => session.classCode),
-    }.where((code) => code.isNotEmpty).toList()
-      ..sort();
+    }.where((code) => code.isNotEmpty).toList()..sort();
     return classCodes.map((classCode) {
       final studentRows = statsForClass(classCode);
       final subject = sessions.firstWhere(
@@ -194,10 +238,16 @@ class AttendanceStatsService {
       return AttendanceClassStats(
         classCode: classCode,
         subjectName: subject.subjectName,
-        studentCount: students.where((student) => student.classId == classCode).length,
+        studentCount: students
+            .where((student) => student.classId == classCode)
+            .length,
         progress: classProgress(classCode),
-        warningCount: studentRows.where((row) => row.status == StudentRiskStatus.warning).length,
-        bannedCount: studentRows.where((row) => row.status == StudentRiskStatus.banned).length,
+        warningCount: studentRows
+            .where((row) => row.status == StudentRiskStatus.warning)
+            .length,
+        bannedCount: studentRows
+            .where((row) => row.status == StudentRiskStatus.banned)
+            .length,
       );
     }).toList();
   }

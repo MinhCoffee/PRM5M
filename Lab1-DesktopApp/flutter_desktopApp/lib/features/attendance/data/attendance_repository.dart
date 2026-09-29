@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../services/google_sheet_service.dart';
 import '../attendance_student.dart';
 
@@ -31,7 +32,12 @@ class AttendanceSession {
 abstract interface class AttendanceRepository {
   Future<List<AttendanceSession>> getSessions();
   Future<List<AttendanceStudent>> studentsForSession(String sessionId);
-  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted});
+  Future<bool> isSessionSubmitted(String sessionId);
+  Future<void> saveAttendance(
+    String sessionId,
+    List<AttendanceStudent> students, {
+    required bool submitted,
+  });
   Future<SeedSummary> seedSampleData();
 }
 
@@ -81,34 +87,86 @@ class MockAttendanceRepository implements AttendanceRepository {
   @override
   Future<List<AttendanceStudent>> studentsForSession(String sessionId) async {
     return [
-      _student('HE170124', 'Tran Hoang Nam', 'Male', 1, 'Present in class', Colors.blue),
+      _student(
+        'HE170124',
+        'Tran Hoang Nam',
+        'Male',
+        1,
+        'Present in class',
+        Colors.blue,
+      ),
       _student('HE170318', 'Nguyen Thi Minh Anh', 'Female', 0, '', Colors.teal),
-      _student('HE170455', 'Le Quoc Bao', 'Male', 3, 'Absent unexcused', Colors.indigo, present: false),
+      _student(
+        'HE170455',
+        'Le Quoc Bao',
+        'Male',
+        3,
+        'Absent unexcused',
+        Colors.indigo,
+        present: false,
+      ),
       _student('HE170682', 'Pham Duc Thang', 'Male', 1, '', Colors.deepOrange),
-      _student('HE170791', 'Vu Huong Giang', 'Female', 2, 'Medical absence reported to Academic Affairs', Colors.purple, present: false),
+      _student(
+        'HE170791',
+        'Vu Huong Giang',
+        'Female',
+        2,
+        'Medical absence reported to Academic Affairs',
+        Colors.purple,
+        present: false,
+      ),
       _student('HE170814', 'Doan Tuan Kiet', 'Male', 0, '', Colors.green),
       _student('HE170950', 'Nguyen Hoang Long', 'Male', 2, '', Colors.blueGrey),
-      _student('HE171012', 'Bui Mai Phuong', 'Female', 4, 'Consecutive absence 3rd time', Colors.pink, present: false),
+      _student(
+        'HE171012',
+        'Bui Mai Phuong',
+        'Female',
+        4,
+        'Consecutive absence 3rd time',
+        Colors.pink,
+        present: false,
+      ),
     ];
   }
 
   @override
-  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {}
+  Future<bool> isSessionSubmitted(String sessionId) async => false;
 
   @override
-  Future<SeedSummary> seedSampleData() async => const SeedSummary(subjectCount: 0, classCount: 0, studentsAdded: 0, sessionsAdded: 0, attendanceAdded: 0);
+  Future<void> saveAttendance(
+    String sessionId,
+    List<AttendanceStudent> students, {
+    required bool submitted,
+  }) async {}
 
-  AttendanceStudent _student(String rollNo, String name, String gender, int absences, String note, Color color, {bool present = true}) => AttendanceStudent(
-        rollNo: rollNo,
-        fullName: name,
-        major: 'SE - Software Engineering',
-        gender: gender,
-        previousAbsences: absences,
-        totalSessions: 14,
-        note: note,
-        avatarColor: color,
-        status: present ? AttendanceState.present : AttendanceState.absent,
-      );
+  @override
+  Future<SeedSummary> seedSampleData() async => const SeedSummary(
+    subjectCount: 0,
+    classCount: 0,
+    studentsAdded: 0,
+    sessionsAdded: 0,
+    attendanceAdded: 0,
+  );
+
+  AttendanceStudent _student(
+    String rollNo,
+    String name,
+    String gender,
+    int absences,
+    String note,
+    Color color, {
+    bool present = true,
+  }) => AttendanceStudent(
+    rollNo: rollNo,
+    fullName: name,
+    major: 'SE - Software Engineering',
+    gender: gender,
+    previousAbsences: absences,
+    totalSessions: 14,
+    note: note,
+    avatarColor: color,
+    status: present ? AttendanceState.present : AttendanceState.absent,
+  );
 }
 
 class GoogleSheetsAttendanceRepository implements AttendanceRepository {
@@ -129,16 +187,33 @@ class GoogleSheetsAttendanceRepository implements AttendanceRepository {
     final session = _sessions.firstWhere((item) => item.id == sessionId);
     final students = await service.getStudentsByClass(session.className);
     final attendance = await service.getAllAttendance();
-    final pastSessionIds = _sessions.where((item) => item.className == session.className && item.sessionNumber < session.sessionNumber).map((item) => item.id).toSet();
-    final currentAttendance = attendance.where((row) => row.sessionId == sessionId);
+    final pastSessionIds = _sessions
+        .where(
+          (item) =>
+              item.className == session.className &&
+              item.sessionNumber < session.sessionNumber,
+        )
+        .map((item) => item.id)
+        .toSet();
+    final currentAttendance = attendance.where(
+      (row) => row.sessionId == sessionId,
+    );
     final byStudent = {for (final row in currentAttendance) row.studentId: row};
     return students.map((student) {
       final row = byStudent[student.studentId];
-      final previousRows = attendance.where((item) => item.studentId == student.studentId && pastSessionIds.contains(item.sessionId));
-      final previousAbsences = previousRows.where((item) => item.status == 'absent').length;
+      final previousRows = attendance.where(
+        (item) =>
+            item.studentId == student.studentId &&
+            pastSessionIds.contains(item.sessionId),
+      );
+      final previousAbsences = previousRows
+          .where((item) => item.status == 'absent')
+          .length;
       return AttendanceStudent(
         studentId: student.studentId,
-        rollNo: student.studentCode.isEmpty ? student.studentId : student.studentCode,
+        rollNo: student.studentCode.isEmpty
+            ? student.studentId
+            : student.studentCode,
         fullName: student.fullName,
         major: student.major,
         gender: student.gender,
@@ -146,18 +221,35 @@ class GoogleSheetsAttendanceRepository implements AttendanceRepository {
         totalSessions: pastSessionIds.length,
         note: row?.note ?? '',
         avatarColor: _avatarColor(student.studentId),
-        status: row?.status == 'absent' ? AttendanceState.absent : AttendanceState.present,
+        status: row?.status == 'absent'
+            ? AttendanceState.absent
+            : AttendanceState.present,
       );
     }).toList();
   }
 
   @override
-  Future<void> saveAttendance(String sessionId, List<AttendanceStudent> students, {required bool submitted}) async {
+  Future<bool> isSessionSubmitted(String sessionId) async {
+    final rows = await service.getAttendance(sessionId);
+    return rows.isNotEmpty &&
+        rows.every((row) => row.syncStatus == 'submitted');
+  }
+
+  @override
+  Future<void> saveAttendance(
+    String sessionId,
+    List<AttendanceStudent> students, {
+    required bool submitted,
+  }) async {
     for (final student in students) {
       await service.upsertAttendance(
         sessionId: sessionId,
-        studentId: student.studentId.isEmpty ? student.rollNo : student.studentId,
-        status: student.status == AttendanceState.present ? 'present' : 'absent',
+        studentId: student.studentId.isEmpty
+            ? student.rollNo
+            : student.studentId,
+        status: student.status == AttendanceState.present
+            ? 'present'
+            : 'absent',
         note: student.note,
         syncStatus: submitted ? 'submitted' : 'draft',
       );
@@ -168,19 +260,21 @@ class GoogleSheetsAttendanceRepository implements AttendanceRepository {
   Future<SeedSummary> seedSampleData() => service.seedSampleData();
 
   AttendanceSession _toSession(SheetScheduleRow row) => AttendanceSession(
-        id: row.sessionId,
-        subjectCode: row.subjectCode,
-        subjectName: row.subjectName,
-        className: row.classCode,
-        schedule: row.slot,
-        room: row.room,
-        date: row.sessionDate,
-        sessionNumber: row.sessionNo,
-        totalSessions: row.totalSessions,
-        accentColor: _accentColor(row.subjectCode),
-      );
+    id: row.sessionId,
+    subjectCode: row.subjectCode,
+    subjectName: row.subjectName,
+    className: row.classCode,
+    schedule: row.slot,
+    room: row.room,
+    date: row.sessionDate,
+    sessionNumber: row.sessionNo,
+    totalSessions: row.totalSessions,
+    accentColor: _accentColor(row.subjectCode),
+  );
 
-  Color _accentColor(String value) => Color((value.hashCode & 0x00FFFFFF) | 0xFF000000);
+  Color _accentColor(String value) =>
+      Color((value.hashCode & 0x00FFFFFF) | 0xFF000000);
 
-  Color _avatarColor(String value) => Colors.primaries[value.hashCode.abs() % Colors.primaries.length];
+  Color _avatarColor(String value) =>
+      Colors.primaries[value.hashCode.abs() % Colors.primaries.length];
 }
