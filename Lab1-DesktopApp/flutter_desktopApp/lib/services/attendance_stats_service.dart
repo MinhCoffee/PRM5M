@@ -58,6 +58,16 @@ class AttendanceClassStats {
   });
 }
 
+class MissingAttendanceSession {
+  final SheetScheduleRow session;
+  final SessionStatus status;
+
+  const MissingAttendanceSession({
+    required this.session,
+    required this.status,
+  });
+}
+
 class AttendanceSubjectStats {
   final String classCode;
   final String subjectCode;
@@ -356,6 +366,40 @@ class AttendanceStatsService {
       );
     }).toList();
   }
+
+  List<MissingAttendanceSession> sessionsMissingAttendance() => sessions
+      .map(
+        (session) => MissingAttendanceSession(
+          session: session,
+          status: sessionStatus(session),
+        ),
+      )
+      .where(
+        (item) =>
+            item.status == SessionStatus.inProgress ||
+            item.status == SessionStatus.overdueNotTaken,
+      )
+      .toList()
+    ..sort((a, b) {
+      final dateCompare = a.session.sessionDate.compareTo(b.session.sessionDate);
+      if (dateCompare != 0) return dateCompare;
+      return a.session.slot.compareTo(b.session.slot);
+    });
+
+  List<AttendanceStudentStats> studentsByRiskStatus() => students
+      .map(
+        (student) => studentStatsAcrossAllSubjects(
+          student,
+          usePolicyThresholds: true,
+        ),
+      )
+      .where((row) => row.status != StudentRiskStatus.ok)
+      .toList()
+    ..sort((a, b) {
+      final statusCompare = a.status.index.compareTo(b.status.index);
+      if (statusCompare != 0) return statusCompare;
+      return b.absenceRate.compareTo(a.absenceRate);
+    });
 
   AttendanceStudentStats _studentStatsFromRows({
     required Student student,

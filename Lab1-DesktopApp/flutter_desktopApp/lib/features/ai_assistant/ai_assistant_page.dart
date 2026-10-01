@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../services/attendance_stats_service.dart';
+import '../../services/attendance_notification_service.dart';
 
 class AiAssistantPage extends StatefulWidget {
   final AttendanceStatsService stats;
@@ -16,25 +17,48 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
   late Future<void> _loadFuture;
   final List<String> _messages = [];
   String? _selectedStudentId;
+  final _notificationService = AttendanceNotificationService();
 
   @override
   void initState() {
     super.initState();
-    _loadFuture = widget.stats.load();
+    _loadFuture = _loadAndNotify();
+  }
+
+  Future<void> _loadAndNotify() async {
+    await widget.stats.load();
+    final missing = widget.stats.sessionsMissingAttendance();
+    final atRisk = widget.stats.studentsByRiskStatus();
+    final automaticMessages = <String>[
+      if (missing.isNotEmpty)
+        'Automatic reminder: ${missing.length} class session(s) still need attendance: ${missing.take(10).map(_sessionText).join('; ')}.',
+      if (atRisk.isNotEmpty)
+        'Automatic attendance alert: ${atRisk.where((row) => row.status == StudentRiskStatus.banned).length} banned and ${atRisk.where((row) => row.status == StudentRiskStatus.warning).length} warning student(s) detected.',
+      if (missing.isEmpty && atRisk.isEmpty)
+        'Automatic attendance scan completed. No missing sessions or warning/banned students were found.',
+    ];
+    try {
+      final dispatch = await _notificationService.dispatch(
+        missingSessions: missing,
+        riskRows: atRisk,
+      );
+      if (dispatch.sentCount > 0) {
+        automaticMessages.add(
+          'Automatic email dispatch sent to ${dispatch.sentCount} warning/banned student(s).',
+        );
+      } else if (dispatch.pendingCount > 0) {
+        automaticMessages.add(
+          'Email dispatch is pending: configure ATTENDANCE_NOTIFICATION_ENDPOINT to send ${dispatch.pendingCount} student notification(s) automatically.',
+        );
+      }
+    } catch (error) {
+      automaticMessages.add('Automatic email dispatch failed: $error');
+    }
+    if (mounted) setState(() => _messages.addAll(automaticMessages));
   }
 
   void _atRisk() {
-    final rows =
-        widget.stats.students
-            .map(
-              (student) => widget.stats.studentStatsAcrossAllSubjects(
-                student,
-                usePolicyThresholds: true,
-              ),
-            )
-            .where((row) => row.status != StudentRiskStatus.ok)
-            .toList()
-          ..sort((a, b) => b.absenceRate.compareTo(a.absenceRate));
+    final rows = widget.stats.studentsByRiskStatus();
     final warningRows = rows
         .where((row) => row.status == StudentRiskStatus.warning)
         .toList();
@@ -103,6 +127,9 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
 
   String _studentRiskText(AttendanceStudentStats row) =>
       '${row.student.studentCode} ${row.student.fullName} ${_percent(row.absenceRate)} (${row.absentCount}/${row.sessionsHeld})';
+
+    String _sessionText(MissingAttendanceSession item) =>
+      '${item.session.subjectCode} ${item.session.classCode} on ${item.session.sessionDate} (${item.status.value})';
 
   String _percent(double value) => '${(value * 100).toStringAsFixed(1)}%';
 
