@@ -11,16 +11,22 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          const AppHeader(),
-          const NavBar(),
-          const BreadcrumbBar(),
-          Expanded(child: child),
-          const AppFooter(),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 700;
+        return Scaffold(
+          body: Column(
+            children: [
+              const AppHeader(),
+              if (!isMobile) const NavBar(),
+              const BreadcrumbBar(),
+              Expanded(child: child),
+              if (!isMobile) const AppFooter(),
+            ],
+          ),
+          bottomNavigationBar: isMobile ? const MobileNavBar() : null,
+        );
+      },
     );
   }
 }

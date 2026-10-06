@@ -34,9 +34,13 @@ Create `.env` in the project root. The file is ignored by Git, but must be inclu
 GOOGLE_CLIENT_ID=your-desktop-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-desktop-client-secret
 GOOGLE_SPREADSHEET_ID=your-spreadsheet-id
+ATTENDANCE_NOTIFICATION_ENDPOINT=https://your-cloud-function-url
+ATTENDANCE_TEACHER_EMAIL=lecturer@university.edu
 ```
 
 The Google account used during login must have Editor access to the spreadsheet. OAuth opens the browser and receives the callback through a local port; no manual redirect URI is required for a Desktop OAuth client.
+
+The notification endpoint must be a protected Firebase Cloud Function (or equivalent backend) that validates the signed-in lecturer before sending email. Keep email provider API keys and Gmail credentials in Firebase Functions secrets, never in the Flutter `.env` file.
 
 ## Required sheet tabs and headers
 
