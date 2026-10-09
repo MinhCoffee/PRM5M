@@ -196,8 +196,9 @@ final sessionDate = DateTime.tryParse(session.sessionDate);
           ? SessionStatus.inProgress
           : SessionStatus.overdueNotTaken;
     }
-    if (rows.any((row) => row.syncStatus == 'draft'))
+    if (rows.any((row) => row.syncStatus == 'draft')) {
       return SessionStatus.inProgress;
+    }
 
     return SessionStatus.taken;
   }

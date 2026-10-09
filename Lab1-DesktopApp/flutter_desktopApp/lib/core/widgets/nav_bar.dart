@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../theme/app_theme.dart';
 
 class NavBar extends StatelessWidget {
@@ -18,27 +19,55 @@ class NavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const items = {
+      'Home': '/home',
+      'Timetable': '/timetable',
+      'Export': '/fap-sync',
+      'AI Assistant': '/ai-assistant',
+      'Take Attendance': '/take-attendance',
+      'Reports': '/reports',
+      'Settings': '/settings',
+    };
+
     final currentPath = GoRouterState.of(context).uri.path;
     return Container(
       height: 48,
       color: AppColors.primary,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(children: items.map((item) {
-        final selected = currentPath == item.$2 || (item.$1 == 'Take Attendance' && currentPath.startsWith('/attendance/'));
-        return Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: TextButton(
-            onPressed: () => context.go(item.$2),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: selected ? AppColors.primaryDark : Colors.transparent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      child: Row(
+        children: items.map((item) {
+          final selected =
+              currentPath == item.$2 ||
+              (item.$1 == 'Take Attendance' &&
+                  currentPath.startsWith('/attendance/'));
+          return Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: TextButton(
+              onPressed: () => context.go(item.$2),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: selected
+                    ? AppColors.primaryDark
+                    : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+              ),
+              child: Text(
+                item.$1,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
             ),
-            child: Text(item.$1, style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w600, fontSize: 13)),
-          ),
-        );
-      }).toList()),
+          );
+        }).toList(),
+      ),
     );
   }
 }
@@ -50,7 +79,10 @@ class MobileNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentPath = GoRouterState.of(context).uri.path;
     var selectedIndex = NavBar.items.indexWhere(
-      (item) => currentPath == item.$2 || (item.$1 == 'Take Attendance' && currentPath.startsWith('/attendance/')),
+      (item) =>
+          currentPath == item.$2 ||
+          (item.$1 == 'Take Attendance' &&
+              currentPath.startsWith('/attendance/')),
     );
     if (selectedIndex < 0) selectedIndex = 0;
 
@@ -69,7 +101,10 @@ class MobileNavBar extends StatelessWidget {
       },
       destinations: [
         for (final index in primaryItems.take(4))
-          NavigationDestination(icon: Icon(NavBar.items[index].$3), label: NavBar.items[index].$1),
+          NavigationDestination(
+            icon: Icon(NavBar.items[index].$3),
+            label: NavBar.items[index].$1,
+          ),
         const NavigationDestination(icon: Icon(Icons.menu), label: 'More'),
       ],
     );

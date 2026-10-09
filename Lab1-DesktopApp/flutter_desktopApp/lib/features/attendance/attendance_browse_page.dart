@@ -87,10 +87,11 @@ class _AttendanceBrowsePageState extends State<AttendanceBrowsePage> {
         ),
       );
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not create sample data: $error')),
         );
+      }
     }
   }
 

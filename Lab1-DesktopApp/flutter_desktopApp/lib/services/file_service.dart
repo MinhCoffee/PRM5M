@@ -245,8 +245,9 @@ class FileService {
       if (resolvedId.isEmpty ||
           studentName.isEmpty ||
           resolvedClass.isEmpty ||
-          seenIds.contains(dedupeKey))
+          seenIds.contains(dedupeKey)) {
         continue;
+      }
       seenIds.add(dedupeKey);
       students.add(
         Student(

@@ -157,10 +157,11 @@ class GoogleSheetService {
         if (_scheduleSheet == null) 'schedule',
         if (_attendanceSheet == null) 'attendance',
       ];
-      if (missing.isNotEmpty)
+      if (missing.isNotEmpty) {
         throw GoogleSheetException(
           'Missing required sheet tab(s): ${missing.join(', ')}',
         );
+      }
       await _validateHeaders(_studentsSheet!, 'students', _studentsHeaders);
       await _validateHeaders(_scheduleSheet!, 'schedule', _scheduleHeaders);
       await _validateHeaders(
@@ -348,14 +349,16 @@ class GoogleSheetService {
   Future<void> upsertAttendance({required String sessionId, required String studentId, required String status, required String note, required String syncStatus}) async {
 
     await _requireLive();
-    if (status != 'present' && status != 'absent')
+    if (status != 'present' && status != 'absent') {
       throw const GoogleSheetException(
         'Attendance status must be present or absent.',
       );
-    if (syncStatus != 'draft' && syncStatus != 'submitted')
+    }
+    if (syncStatus != 'draft' && syncStatus != 'submitted') {
       throw const GoogleSheetException(
         'Sync status must be draft or submitted.',
       );
+    }
     try {
       final rows = await _readRows(
         _attendanceSheet!,
@@ -415,12 +418,14 @@ class GoogleSheetService {
         final codeKey = studentCode.toUpperCase();
         if (studentId.isEmpty ||
             student.fullName.trim().isEmpty ||
-            student.classId.trim().isEmpty)
+            student.classId.trim().isEmpty) {
           continue;
+        }
         if (existingIds.contains(idKey) ||
             existingCodes.contains(codeKey) ||
-            seenIds.contains(idKey))
+            seenIds.contains(idKey)) {
           continue;
+        }
         seenIds.add(idKey);
         rows.add([
           studentId,
@@ -878,10 +883,11 @@ class GoogleSheetService {
           modifiedUri,
           mode: LaunchMode.externalApplication,
         );
-        if (!opened)
+        if (!opened) {
           throw const GoogleSheetException(
             'Could not open the Google authorization page.',
           );
+        }
       },
     );
     return client;
@@ -902,8 +908,9 @@ class GoogleSheetService {
   }
 
   Future<void> _requireLive() async {
-    if (!await init())
+    if (!await init()) {
       throw GoogleSheetException(_lastError ?? 'Google Sheets is unavailable.');
+    }
   }
 
   Future<void> _validateHeaders(

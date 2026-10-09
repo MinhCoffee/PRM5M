@@ -179,15 +179,17 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_loadError != null)
+    if (_loadError != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text('Could not load attendance: $_loadError'),
         ),
       );
-    if (_session == null)
+    }
+    if (_session == null) {
       return const Center(child: Text('Session not found.'));
+    }
     return SingleChildScrollView(child: _content(context));
   }
 
