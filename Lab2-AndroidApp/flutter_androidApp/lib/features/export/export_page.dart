@@ -1,9 +1,7 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/status_chip.dart';
@@ -109,31 +107,23 @@ class _ExportPageState extends State<ExportPage> {
       final classLabel = _classCode == 'all' ? 'AllClasses' : _classCode;
       final defaultFileName = 'FAP_Attendance_${classLabel}_$timestamp.csv';
 
-      String? savePath;
-      try {
-        savePath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save FAP Attendance CSV',
-          fileName: defaultFileName,
-          type: FileType.custom,
-          allowedExtensions: ['csv'],
-        );
-      } catch (_) {}
-
-      if (savePath == null) {
-        final directory = await getApplicationDocumentsDirectory();
-        savePath = '${directory.path}${Platform.pathSeparator}$defaultFileName';
-      }
-
-      final file = File(savePath);
-      await file.writeAsString('${rows.join('\n')}\n');
+      final savePath = await _fileService.saveTextFile(
+        dialogTitle: 'Save FAP Attendance CSV',
+        fileName: defaultFileName,
+        content: '${rows.join('\n')}\n',
+        extensions: ['csv'],
+      );
+      if (savePath == null) return;
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Exported ${rows.length - 1} records for [ $classLabel ] to $savePath'),
-          action: SnackBarAction(
-            label: 'Open Folder',
-            onPressed: () => Process.run('explorer.exe', ['/select,', savePath!]),
-          ),
+          action: Platform.isWindows
+              ? SnackBarAction(
+                  label: 'Open Folder',
+                  onPressed: () => Process.run('explorer.exe', ['/select,', savePath]),
+                )
+              : null,
           duration: const Duration(seconds: 10),
         ));
       }
@@ -211,38 +201,47 @@ class _ExportPageState extends State<ExportPage> {
             ..sort(),
         ];
 
-        return ListView(padding: const EdgeInsets.all(24), children: [
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Export & FAP Sync', style: Theme.of(context).textTheme.headlineLarge),
-                const SizedBox(height: 4),
-                Text(
-                  'Select class and date range to export official FAP attendance records or import class roster from CSV/Excel.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ]),
-            ),
-            IconButton.filledTonal(
-              tooltip: 'Refresh data from Google Sheets',
-              icon: const Icon(Icons.refresh),
-              onPressed: () => setState(() => _loadFuture = widget.stats.load(force: true)),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: _exporting ? null : _exportCsv,
-              icon: const Icon(Icons.download_outlined),
-              label: Text(_exporting ? 'Exporting...' : (_classCode == 'all' ? 'Export CSV (All Classes)' : 'Export CSV ($_classCode)')),
-            ),
-          ]),
+        final narrow = MediaQuery.sizeOf(context).width < 700;
+        final titleBlock = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Export & FAP Sync', style: Theme.of(context).textTheme.headlineLarge),
+          const SizedBox(height: 4),
+          Text(
+            'Select class and date range to export official FAP attendance records or import class roster from CSV/Excel.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ]);
+        final refreshButton = IconButton.filledTonal(
+          tooltip: 'Refresh data from Google Sheets',
+          icon: const Icon(Icons.refresh),
+          onPressed: () => setState(() => _loadFuture = widget.stats.load(force: true)),
+        );
+        final exportButton = FilledButton.icon(
+          onPressed: _exporting ? null : _exportCsv,
+          icon: const Icon(Icons.download_outlined),
+          label: Text(_exporting ? 'Exporting...' : (_classCode == 'all' ? 'Export CSV (All Classes)' : 'Export CSV ($_classCode)')),
+        );
+        return ListView(padding: EdgeInsets.all(narrow ? 16 : 24), children: [
+          // On a phone the title would be squeezed between the buttons, so stack them.
+          if (narrow) ...[
+            titleBlock,
+            const SizedBox(height: 12),
+            Row(children: [refreshButton, const SizedBox(width: 8), Expanded(child: exportButton)]),
+          ] else
+            Row(children: [
+              Expanded(child: titleBlock),
+              refreshButton,
+              const SizedBox(width: 8),
+              exportButton,
+            ]),
           const SizedBox(height: 18),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
-                  width: 200,
+                  width: narrow ? double.infinity : 200,
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: _classCode,
                     decoration: const InputDecoration(labelText: 'Target Class', isDense: true),
                     items: classes
@@ -282,7 +281,7 @@ class _ExportPageState extends State<ExportPage> {
               padding: const EdgeInsets.all(12),
               child: Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 SizedBox(
-                  width: 200,
+                  width: narrow ? double.infinity : 200,
                   child: TextField(
                     controller: _importClassController,
                     textCapitalization: TextCapitalization.characters,
@@ -307,7 +306,27 @@ class _ExportPageState extends State<ExportPage> {
             ),
           ),
           const SizedBox(height: 16),
-          Card(
+          // Six columns do not fit on a phone, so list one card per session there.
+          if (narrow)
+            ..._sessions.map((session) => Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${session.classCode}  ·  ${session.subjectCode}', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary)),
+                          const SizedBox(height: 2),
+                          Text(session.subjectName),
+                          Text('Session ${session.sessionNo} / ${session.totalSessions}  ·  ${session.sessionDate}  ·  ${session.slot}', style: Theme.of(context).textTheme.bodySmall),
+                        ]),
+                      ),
+                      const SizedBox(width: 8),
+                      _statusBadge(_syncStatus(session.sessionId)),
+                    ]),
+                  ),
+                ))
+          else Card(
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,

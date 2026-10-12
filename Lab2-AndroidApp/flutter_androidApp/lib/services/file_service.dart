@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
@@ -11,6 +12,37 @@ import '../models/attendance_record.dart';
 import '../models/student.dart';
 
 class FileService {
+  static bool get _isMobile => Platform.isAndroid || Platform.isIOS;
+
+  /// Saves [content] through the platform save dialog and returns the saved
+  /// path, or null if the user cancelled. Mobile pickers need the bytes up
+  /// front and write the file themselves; desktop pickers only return a path.
+  /// Falls back to the app documents folder if the dialog fails.
+  Future<String?> saveTextFile({
+    required String dialogTitle,
+    required String fileName,
+    required String content,
+    required List<String> extensions,
+  }) async {
+    try {
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: extensions,
+        bytes: _isMobile ? Uint8List.fromList(utf8.encode(content)) : null,
+      );
+      if (path == null) return null;
+      if (!_isMobile) await File(path).writeAsString(content);
+      return path;
+    } catch (_) {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}${Platform.pathSeparator}$fileName');
+      await file.writeAsString(content);
+      return file.path;
+    }
+  }
+
   /// Import student list from CSV file
   Future<List<Student>> importStudentsFromCsv(
     String classId, [
@@ -80,23 +112,12 @@ class FileService {
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final defaultFileName = 'BaoCao_DiemDanh_${classId}_$timestamp.txt';
 
-    try {
-      final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Lưu báo cáo điểm danh AI',
-        fileName: defaultFileName,
-        type: FileType.custom,
-        allowedExtensions: ['txt', 'md'],
-      );
-
-      if (outputPath == null) return null;
-
-      final file = File(outputPath);
-      await file.writeAsString(reportText);
-      return outputPath;
-    } catch (e) {
-      // Fallback: save to Documents folder automatically if GUI picker is cancelled or throws
-      return await exportReportToDocuments(reportText, classId);
-    }
+    return saveTextFile(
+      dialogTitle: 'Lưu báo cáo điểm danh AI',
+      fileName: defaultFileName,
+      content: reportText,
+      extensions: ['txt', 'md'],
+    );
   }
 
   /// Backup/fallback export method to Documents directory
@@ -118,25 +139,12 @@ class FileService {
     required List<List<dynamic>> rows,
   }) async {
     final csvContent = const ListToCsvConverter().convert(rows);
-    try {
-      final outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: dialogTitle,
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-      );
-
-      if (outputPath == null) return null;
-
-      final file = File(outputPath);
-      await file.writeAsString(csvContent);
-      return outputPath;
-    } catch (e) {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}${Platform.pathSeparator}$fileName');
-      await file.writeAsString(csvContent);
-      return file.path;
-    }
+    return saveTextFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      content: csvContent,
+      extensions: ['csv'],
+    );
   }
 
   /// Export raw attendance records to CSV file
@@ -175,18 +183,12 @@ class FileService {
     final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final defaultFileName = 'DiemDanh_${classId}_$timestamp.csv';
 
-    final outputPath = await FilePicker.platform.saveFile(
+    return saveTextFile(
       dialogTitle: 'Lưu bảng điểm danh CSV',
       fileName: defaultFileName,
-      type: FileType.custom,
-      allowedExtensions: ['csv'],
+      content: csvContent,
+      extensions: ['csv'],
     );
-
-    if (outputPath == null) return null;
-
-    final file = File(outputPath);
-    await file.writeAsString(csvContent);
-    return outputPath;
   }
 
   List<Student> _studentsFromRows(

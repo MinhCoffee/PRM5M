@@ -33,7 +33,8 @@ class _TimetablePageState extends State<TimetablePage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
         if (snapshot.hasError) return Center(child: Text('Could not load timetable: ${snapshot.error}'));
-        return ListView(padding: const EdgeInsets.all(24), children: [
+        final narrow = MediaQuery.sizeOf(context).width < 700;
+        return ListView(padding: EdgeInsets.all(narrow ? 16 : 24), children: [
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Timetable', style: Theme.of(context).textTheme.headlineLarge),
@@ -44,7 +45,8 @@ class _TimetablePageState extends State<TimetablePage> {
             IconButton(tooltip: 'Next week', onPressed: () => _moveWeek(1), icon: const Icon(Icons.chevron_right)),
           ]),
           const SizedBox(height: 18),
-          Card(
+          // A 7-day grid needs ~1280px, so phones get a day-by-day list instead.
+          if (narrow) ..._dayList(context) else Card(
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -60,6 +62,46 @@ class _TimetablePageState extends State<TimetablePage> {
         ]);
       },
     );
+  }
+
+  List<Widget> _dayList(BuildContext context) {
+    final widgets = <Widget>[];
+    for (var i = 0; i < 7; i++) {
+      final date = _weekStart.add(Duration(days: i));
+      final sessions = widget.stats.sessions.where((session) => _sameDate(session.sessionDate, date)).toList()
+        ..sort((a, b) => _slotNumber(a.slot).compareTo(_slotNumber(b.slot)));
+      widgets.add(Padding(
+        padding: EdgeInsets.only(top: i == 0 ? 0 : 16, bottom: 8),
+        child: Text('${_dayName(date.weekday)}  ${_formatDate(date)}', style: Theme.of(context).textTheme.headlineMedium),
+      ));
+      if (sessions.isEmpty) {
+        widgets.add(Text('No sessions', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.onSurfaceVariant)));
+      }
+      for (final session in sessions) {
+        final status = widget.stats.sessionStatus(session);
+        final color = _statusColor(status);
+        widgets.add(Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => widget.onSessionSelected(session.sessionId),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.08), border: Border(left: BorderSide(color: color, width: 4))),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Slot ${_slotNumber(session.slot)}  ·  ${session.subjectCode}  ·  ${session.classCode}', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text('${session.subjectName}  ·  ${session.room}'),
+                const SizedBox(height: 2),
+                Text(status.value, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12)),
+              ]),
+            ),
+          ),
+        ));
+      }
+    }
+    return widgets;
   }
 
   Widget _headerRow() => Row(children: [

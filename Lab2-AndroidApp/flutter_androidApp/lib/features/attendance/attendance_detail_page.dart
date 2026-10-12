@@ -193,11 +193,18 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     return SingleChildScrollView(child: _content(context));
   }
 
+  bool get _narrow => MediaQuery.sizeOf(context).width < 700;
+
   Widget _content(BuildContext context) => Center(
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 1400),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+          _narrow ? 12 : 20,
+          _narrow ? 12 : 20,
+          _narrow ? 12 : 20,
+          24,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -214,48 +221,64 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     ),
   );
 
-  Widget _sessionCard(BuildContext context) => Card(
-    child: Column(
-      children: [
-        const SizedBox(height: 6, child: ColoredBox(color: AppColors.primary)),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              _sessionItem(
-                context,
-                Icons.menu_book_outlined,
-                'Subject & Course',
-                _session!.subjectCode,
-                _session!.subjectName,
-              ),
-              _sessionItem(
-                context,
-                Icons.groups_outlined,
-                'Cohort & Schedule',
-                'Class ${_session!.className}',
-                _session!.schedule,
-              ),
-              _sessionItem(
-                context,
-                Icons.meeting_room_outlined,
-                'Campus Space',
-                _session!.room,
-                _session!.date,
-              ),
-              _sessionItem(
-                context,
-                Icons.calendar_month_outlined,
-                'Session',
-                'Session ${_session!.sessionNumber} / ${_session!.totalSessions}',
-                '',
-              ),
-            ],
+  Widget _sessionCard(BuildContext context) {
+    final items = [
+      _sessionItem(
+        context,
+        Icons.menu_book_outlined,
+        'Subject & Course',
+        _session!.subjectCode,
+        _session!.subjectName,
+      ),
+      _sessionItem(
+        context,
+        Icons.groups_outlined,
+        'Cohort & Schedule',
+        'Class ${_session!.className}',
+        _session!.schedule,
+      ),
+      _sessionItem(
+        context,
+        Icons.meeting_room_outlined,
+        'Campus Space',
+        _session!.room,
+        _session!.date,
+      ),
+      _sessionItem(
+        context,
+        Icons.calendar_month_outlined,
+        'Session',
+        'Session ${_session!.sessionNumber} / ${_session!.totalSessions}',
+        '',
+      ),
+    ];
+    return Card(
+      child: Column(
+        children: [
+          const SizedBox(height: 6, child: ColoredBox(color: AppColors.primary)),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            // Four columns do not fit on a phone, so lay them out two per row.
+            child: _narrow
+                ? LayoutBuilder(
+                    builder: (context, constraints) => Wrap(
+                      spacing: 12,
+                      runSpacing: 14,
+                      children: [
+                        for (final item in items)
+                          SizedBox(
+                            width: (constraints.maxWidth - 12) / 2,
+                            child: item,
+                          ),
+                      ],
+                    ),
+                  )
+                : Row(children: [for (final item in items) Expanded(child: item)]),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   Widget _sessionItem(
     BuildContext context,
@@ -263,8 +286,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     String label,
     String value,
     String detail,
-  ) => Expanded(
-    child: Row(
+  ) => Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -300,7 +322,6 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
           ),
         ),
       ],
-    ),
   );
 
   Widget _controlBar(BuildContext context) => Card(
@@ -463,7 +484,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
+        _narrow ? _narrowRosterHeader(context) : Container(
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           color: AppColors.surfaceHigh,
@@ -498,7 +519,13 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
             ],
           ),
         ),
-        SizedBox(
+        if (_narrow)
+          // The eight-column table hides the Present/Absent toggle on a
+          // phone, so each student gets a card instead.
+          ..._visibleStudents.asMap().entries.map(
+            (entry) => _studentCard(context, entry.key, entry.value),
+          )
+        else SizedBox(
           height: 420,
           child: SingleChildScrollView(
             child: SingleChildScrollView(
@@ -544,6 +571,131 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
       ],
     ),
   );
+
+  Widget _narrowRosterHeader(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+    color: AppColors.surfaceHigh,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.how_to_reg, size: 18, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Active Roster Verification',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
+            Text(
+              '${_visibleStudents.length}/${_students.length} shown',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            StatusChip(label: 'Present', type: StatusChipType.present),
+            StatusChip(label: 'Absent', type: StatusChipType.absent),
+            StatusChip(
+              label: 'Critical Risk (>=20%)',
+              type: StatusChipType.warning,
+              showIcon: true,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Widget _studentCard(
+    BuildContext context,
+    int index,
+    AttendanceStudent student,
+  ) {
+    final key = student.studentId.isEmpty ? student.rollNo : student.studentId;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: index.isOdd ? const Color(0xFFF8FAFC) : Colors.white,
+        border: const Border(
+          bottom: BorderSide(color: AppColors.outlineVariant),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: student.avatarColor.withValues(alpha: 0.18),
+                child: Text(
+                  student.fullName[0],
+                  style: TextStyle(
+                    color: student.avatarColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${index + 1}. ${student.fullName}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '${student.rollNo}  ·  ${student.major}  ·  ${student.gender}',
+                      style: const TextStyle(
+                        color: AppColors.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              StatusChip(
+                label:
+                    '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(student.absenceRate * 100).toStringAsFixed(1)}%)',
+                type: student.absenceRate >= .2
+                    ? StatusChipType.absent
+                    : student.absenceRate >= .14
+                    ? StatusChipType.warning
+                    : StatusChipType.neutral,
+                showIcon: student.absenceRate >= .2,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _statusToggle(student),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  key: ValueKey('note-$key'),
+                  initialValue: student.note,
+                  onChanged: (value) => student.note = value,
+                  decoration: const InputDecoration(
+                    hintText: 'Add remarks...',
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   DataRow _studentRow(
     BuildContext context,
@@ -684,28 +836,20 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
       padding: const EdgeInsets.all(12),
       child: Row(
         children: [
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.arrow_back, size: 16),
-            label: const Text('Previous Class (Slot 2)'),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.arrow_forward, size: 16),
-            label: const Text('Next Class (Slot 4)'),
-          ),
-          const Spacer(),
-          const Icon(
-            Icons.cloud_done_outlined,
-            color: AppColors.primary,
+          Icon(
+            _submitted ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+            color: _submitted ? AppColors.primary : AppColors.onSurfaceVariant,
             size: 16,
           ),
           const SizedBox(width: 6),
-          Text(
-            'Draft auto-saved at 11:22:15 AM',
-            style: Theme.of(context).textTheme.labelMedium
-                ?.copyWith(color: AppColors.onSurfaceVariant),
+          Expanded(
+            child: Text(
+              _submitted
+                  ? 'Attendance submitted for this session.'
+                  : 'Not submitted yet. Use Save Draft or Submit to keep your changes.',
+              style: Theme.of(context).textTheme.labelMedium
+                  ?.copyWith(color: AppColors.onSurfaceVariant),
+            ),
           ),
         ],
       ),
