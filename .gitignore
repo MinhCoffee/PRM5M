@@ -1,1 +1,91 @@
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+*.env
+*.env.*
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+!.env.example
+assets/credentials.json
+credentials.json
+client_secret*.json
+
+# Android keystore & signing secrets
+*.keystore
+*.jks
+key.properties
+
+# ==========================================
+# Flutter / Dart Build Artifacts
+# ==========================================
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub/
+**/.pub-cache/
+**/coverage/
+**/doc/api/
+**/.widget_preview/
+**/migrate_working_dir/
+app.*.symbols
+app.*.map.json
+
+# Android platform builds
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/.gradle/
+**/local.properties
+
+# iOS / macOS ephemeral & generated
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+
+# ==========================================
+# IDEs and Editors
+# ==========================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+.atom/
+.history/
+.swiftpm/
+
+# ==========================================
+# Operating System Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# ==========================================
+# Logs & Temporary Files
+# ==========================================
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# ==========================================
+# Archives & Packages
+# ==========================================
+*.zip
+*.rar
+*.7z
+*.tar.gz
 Lab1-DesktopApp/Group4_FapAttendance.zip

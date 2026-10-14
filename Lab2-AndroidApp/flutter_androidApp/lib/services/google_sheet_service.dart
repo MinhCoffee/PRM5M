@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:gsheets/gsheets.dart';
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/auth_io.dart' as auth;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -111,6 +113,10 @@ class GoogleSheetService {
   /// After calling this, the next [init] call will prompt the user to choose a Google account.
   Future<void> signOut() async {
     try {
+      if (Platform.isAndroid) {
+        await _ensureGoogleSignIn();
+        await GoogleSignIn.instance.signOut();
+      }
       final file = await _credentialsFile();
       if (await file.exists()) await file.delete();
     } catch (_) {}
@@ -134,18 +140,26 @@ class GoogleSheetService {
       final targetSpreadsheetId =
           _spreadsheetId ?? _readEnv('GOOGLE_SPREADSHEET_ID') ?? '';
 
-      if (clientId.isEmpty ||
-          clientSecret.isEmpty ||
-          targetSpreadsheetId.isEmpty) {
-        throw const GoogleSheetException(
-          'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_SPREADSHEET_ID are required.',
-        );
+      if (targetSpreadsheetId.isEmpty) {
+        throw const GoogleSheetException('GOOGLE_SPREADSHEET_ID is required.');
       }
 
-      final oauthClient =
-          await _loadCachedClient(auth.ClientId(clientId, clientSecret)) ??
-          await _requestUserClient(auth.ClientId(clientId, clientSecret));
-      await _saveCredentials(oauthClient.credentials);
+      final auth.AutoRefreshingAuthClient oauthClient;
+      if (Platform.isAndroid) {
+        oauthClient = _NativeAuthClient(await _requestAndroidClient());
+      } else {
+        if (clientId.isEmpty || clientSecret.isEmpty) {
+          throw const GoogleSheetException(
+            'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required.',
+          );
+        }
+        final desktopId = auth.ClientId(clientId, clientSecret);
+        final desktopClient =
+            await _loadCachedClient(desktopId) ??
+            await _requestUserClient(desktopId);
+        await _saveCredentials(desktopClient.credentials);
+        oauthClient = desktopClient;
+      }
       _gsheets = GSheets.withClient(oauthClient);
       final ss = await _gsheets!.spreadsheet(targetSpreadsheetId);
 
@@ -867,6 +881,36 @@ class GoogleSheetService {
     }
   }
 
+  static const _sheetScopes = ['https://www.googleapis.com/auth/spreadsheets'];
+  static bool _googleSignInReady = false;
+
+  Future<void> _ensureGoogleSignIn() async {
+    if (_googleSignInReady) return;
+    // serverClientId must be the *Web application* OAuth client ID.
+    final serverClientId = _readEnv('GOOGLE_WEB_CLIENT_ID')?.trim();
+    await GoogleSignIn.instance.initialize(
+      serverClientId:
+          (serverClientId == null || serverClientId.isEmpty)
+          ? null
+          : serverClientId,
+    );
+    _googleSignInReady = true;
+  }
+
+  /// Android: native Google account picker (no localhost callback needed).
+  Future<auth.AuthClient> _requestAndroidClient() async {
+    await _ensureGoogleSignIn();
+    final account = await GoogleSignIn.instance.authenticate(
+      scopeHint: _sheetScopes,
+    );
+    final authorization =
+        await account.authorizationClient.authorizationForScopes(
+          _sheetScopes,
+        ) ??
+        await account.authorizationClient.authorizeScopes(_sheetScopes);
+    return authorization.authClient(scopes: _sheetScopes);
+  }
+
   Future<auth.AutoRefreshingAuthClient> _requestUserClient(
     auth.ClientId clientId,
   ) async {
@@ -1000,4 +1044,28 @@ class GoogleSheetService {
   ];
 
   String _value(Map<String, String> row, String key) => row[key]?.trim() ?? '';
+}
+
+/// Adapts a native Google Sign-In [auth.AuthClient] to the
+/// [auth.AutoRefreshingAuthClient] type required by GSheets.withClient.
+/// Tokens are refreshed by google_sign_in, not by this client.
+class _NativeAuthClient extends http.BaseClient
+    implements auth.AutoRefreshingAuthClient {
+  _NativeAuthClient(this._inner);
+
+  final auth.AuthClient _inner;
+
+  @override
+  auth.AccessCredentials get credentials => _inner.credentials;
+
+  @override
+  Stream<auth.AccessCredentials> get credentialUpdates =>
+      const Stream<auth.AccessCredentials>.empty();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _inner.send(request);
+
+  @override
+  void close() => _inner.close();
 }
