@@ -1,8 +1,9 @@
 # 04. USER FLOWS
 
-**Dự án:** AttendEase - FPT Academic Attendance & Sync Portal (PRM393 - Lab 2 Android App)  
+**Dự án:** AttendEase (AttendPass) - FPT Academic Attendance & Sync Portal (PRM393 - Lab 2 Android App)  
 **Minh chứng phục vụ:** Slide 03 (Information Architecture) & Slide 04 (Three User Flows)  
-**Tài liệu tham chiếu Figma:** Figma 01
+**Figma Canvas URL:** [Figma PRM Design (Node 2:2)](https://www.figma.com/design/3L02La4yWxZ96fvHavz2ws/PRM?node-id=2-2&t=HFkQ5sszMdvBAJUP-1)  
+**Tài liệu tham chiếu Figma:** Frame `2:2` (Figma PRM Wireframe System)
 
 ---
 
@@ -150,5 +151,5 @@ flowchart TD
 | User Flow | Chuỗi bước (Step-by-Step Flow) | Màn hình tương ứng (Screen ID) | Tình huống lỗi phát sinh | Cơ chế phục hồi (Error Recovery) |
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Authentication** | `Open App → Sign in with Google → Grant Permissions → Access Dashboard` | `SCR-01` (`/login`) $\rightarrow$ Google OAuth $\rightarrow$ `SCR-02` (`/home`) | Đứt kết nối mạng khi cấp quyền; lỗi loopback server trên Android. | **Retry authentication:** Giữ trạng thái, hiển thị thông báo lỗi và nút thử đăng nhập lại ngay lập tức. |
-| **2. Take Attendance** | `Select Class → Mark Present/Absent → Review → Save Draft / Submit` | `SCR-02/03` $\rightarrow$ `SCR-10` (`/attendance/:sessionId`) | Rớt mạng Wi-Fi khi bấm nộp; Google Sheets API trả về mã lỗi 503/timeout. | **Retry saving without losing current changes:** Giữ nguyên 100% thay đổi trên UI, backup tạm vào local storage, cung cấp nút "Retry Saving". |
-| **3. View Reports** | `Open Reports → Filter Data → View Attendance Statistics → Export CSV` | `SCR-06` (`/reports`) / `SCR-07` (`/fap-sync`) | Bộ lọc rỗng (không có dữ liệu điểm danh); lỗi không mở được file picker trên thiết bị. | **Fix export errors and try again:** Thông báo lý do rõ ràng, hướng dẫn điều chỉnh bộ lọc lớp/kỳ học và cung cấp nút "Try Again". |
+| **2. Take Attendance** | `Select Class → Mark Present/Absent → Review → Save Draft / Submit` | `SCR-02/04/05` $\rightarrow$ `SCR-06/10` (`/attendance/:sessionId`) | Rớt mạng Wi-Fi khi bấm nộp; Google Sheets API trả về mã lỗi 503/timeout. | **Retry saving without losing current changes:** Giữ nguyên 100% thay đổi trên UI, backup tạm vào local storage, cung cấp nút "Retry Saving". |
+| **3. View Reports** | `Open Reports → Filter Data → View Attendance Statistics → Export CSV` | `SCR-09` (`/reports`) / `SCR-07` (`/fap-sync`) | Bộ lọc rỗng (không có dữ liệu điểm danh); lỗi không mở được file picker trên thiết bị. | **Fix export errors and try again:** Thông báo lý do rõ ràng, hướng dẫn điều chỉnh bộ lọc lớp/kỳ học và cung cấp nút "Try Again". |

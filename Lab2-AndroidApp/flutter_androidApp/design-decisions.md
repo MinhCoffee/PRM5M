@@ -1,8 +1,9 @@
 # Design Decisions & Accessibility / Responsive Report
 
-**Dự án:** AttendEase - FPT Academic Attendance & Sync Portal  
+**Dự án:** AttendEase (AttendPass) - FPT Academic Attendance & Sync Portal  
 **Nền tảng:** Flutter Mobile App (Android-first, Responsive Desktop)  
-**Minh chứng phục vụ:** Slide 07 (Design Decisions) & Slide 10 (Accessibility / Responsive)
+**Minh chứng phục vụ:** Slide 07 (Design Decisions) & Slide 10 (Accessibility / Responsive)  
+**Figma Canvas URL:** [Figma PRM Design (Node 2:2)](https://www.figma.com/design/3L02La4yWxZ96fvHavz2ws/PRM?node-id=2-2&t=HFkQ5sszMdvBAJUP-1)
 
 ---
 

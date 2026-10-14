@@ -1,7 +1,8 @@
 # AI Iterations, Critique & Mobile UX Refinement Log
 
-**Dự án:** AttendEase - FPT Academic Attendance & Sync Portal (PRM393 Lab 2)  
+**Dự án:** AttendEase (AttendPass) - FPT Academic Attendance & Sync Portal (PRM393 Lab 2)  
 **Minh chứng phục vụ:** Slide 05 & Slide 06 (AI Iterations & Critique)  
+**Figma Canvas URL:** [Figma PRM Design (Node 2:2)](https://www.figma.com/design/3L02La4yWxZ96fvHavz2ws/PRM?node-id=2-2&t=HFkQ5sszMdvBAJUP-1)  
 **Bằng chứng đối chiếu:** Commit `4ca954b` (Design alignment), Commit `329a973` (Android adaptation), và các tệp trong `design/`
 
 ---

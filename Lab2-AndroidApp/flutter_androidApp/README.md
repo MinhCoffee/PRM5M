@@ -1,6 +1,8 @@
-# AttendEase - FPT Academic Attendance & Sync Portal
+# AttendEase (AttendPass) - FPT Academic Attendance & Sync Portal
 
 Flutter cross-platform application (Android & Windows Desktop) using Google Sheets as a database, built for lecturers to manage classroom attendance, sync schedules, and analyze student absence risks.
+
+**Figma Design Reference:** [Figma PRM Wireframe (Node 2:2)](https://www.figma.com/design/3L02La4yWxZ96fvHavz2ws/PRM?node-id=2-2&t=HFkQ5sszMdvBAJUP-1)
 
 ---
 

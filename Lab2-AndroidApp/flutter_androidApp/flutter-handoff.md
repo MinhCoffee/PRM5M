@@ -5,6 +5,7 @@
 - **Hồ Minh** (MinhCoffee) - System Architecture & Alignment
 - **Lâm Thiên Hải Anh** - Android Native Adaptation & Responsive UI
 **Kho mã nguồn GitHub:** [https://github.com/MinhCoffee/PRM5M.git](https://github.com/MinhCoffee/PRM5M.git) (Nhánh `main`)  
+**Figma Canvas URL:** [Figma PRM Design (Node 2:2)](https://www.figma.com/design/3L02La4yWxZ96fvHavz2ws/PRM?node-id=2-2&t=HFkQ5sszMdvBAJUP-1)  
 **Minh chứng phục vụ:** Slide 12 (Flutter Handoff / Summary)
 
 ---
@@ -15,7 +16,7 @@
 1. **Screen Name & Route:** `LoginPage` (`/login`), file: `lib/features/auth/login_page.dart`
 2. **Layout & Responsive Behavior:** Căn giữa màn hình (`Center`), giới hạn chiều rộng tối đa `maxWidth: 420` bằng `ConstrainedBox` trên cả Mobile lẫn Desktop.
 3. **Design Tokens Applied:** `AppColors.surface` (`#F8F9FF`), `AppColors.primary` (`#0072BC`), `TextTheme.headlineLarge`, bo góc `6px`.
-4. **Widgets & Components:** `Scaffold`, `Card`, `FilledButton.icon`, `CircularProgressIndicator`, biểu tượng trường học `Icons.school_outlined`.
+4. **Widgets & Components:** `Scaffold`, `Card`, `FilledButton.icon`, `CircularProgressIndicator`, biểu tượng trường học `Icons.school_outlined`, Campus Dropdown (`HCM`, `HN`, `DN`, `CT`, `QN`).
 5. **Interactive States:** Normal, Loading (vòng xoay vô hiệu hóa nút), Error (dòng chữ đỏ cảnh báo lỗi kết nối).
 6. **Edge Cases & Error Handling:** Tự động đăng nhập lại bằng cached refresh token (`fap_attendance_oauth.json`); nếu người dùng bấm Logout, thêm cờ `logout=1` để xóa token.
 
@@ -31,7 +32,17 @@
 
 ---
 
-### 📱 SCR-03: Take Attendance Session Browser
+### 📱 SCR-03: Weekly Timetable
+1. **Screen Name & Route:** `TimetablePage` (`/timetable`), file: `lib/features/timetable/timetable_page.dart`
+2. **Layout & Responsive Behavior:** Ma trận lưới lịch tuần theo 6 Slot học và các ngày thứ 2 đến Chủ nhật; hỗ trợ cuộn 2 chiều trên Mobile và hiển thị toàn cảnh trên Desktop/Tablet.
+3. **Design Tokens Applied:** `AppColors.surfaceContainer`, `AppColors.outlineVariant`, `AppColors.primaryDark`, `TextTheme.labelMedium`.
+4. **Widgets & Components:** Bảng ma trận slot/thứ, thẻ Slot mini có mã môn/phòng học/lớp, `StatusChip` trạng thái ca học.
+5. **Interactive States:** Chạm vào ô ca học để xem thông tin chi tiết hoặc mở nhanh ca điểm danh tương ứng.
+6. **Edge Cases & Error Handling:** Ô trống không có lịch học hiển thị nền xám nhẹ, không kích hoạt click.
+
+---
+
+### 📱 SCR-04 / SCR-05: Take Attendance Session Browser
 1. **Screen Name & Route:** `AttendanceBrowsePage` (`/take-attendance`), file: `lib/features/attendance/attendance_browse_page.dart`
 2. **Layout & Responsive Behavior:** Nhóm thẻ ca học theo hàng "Hôm nay" và "Sắp tới"; hỗ trợ cuộn kéo chuột/cảm ứng (drag scrolling) và nút mũi tên.
 3. **Design Tokens Applied:** `AppColors.primaryContainer`, `AppColors.outlineVariant`, `TextTheme.labelLarge`.
@@ -41,7 +52,7 @@
 
 ---
 
-### 📱 SCR-10: Attendance Detail Marking (Màn hình trọng tâm)
+### 📱 SCR-06 / SCR-10: Attendance Detail Marking (Màn hình trọng tâm)
 1. **Screen Name & Route:** `AttendanceDetailPage` (`/attendance/:sessionId`), file: `lib/features/attendance/attendance_detail_page.dart`
 2. **Layout & Responsive Behavior:** Tái cấu trúc kép theo breakpoint 700px (Commit `329a973`):
    - **Phone (< 700px):** Danh sách thẻ dọc từng sinh viên (`per-student roster cards`), các nút Present/Absent to bản dễ chạm ngón cái.
@@ -70,6 +81,40 @@
 4. **Widgets & Components:** Thẻ rủi ro sinh viên, khung xem trước email (`TextFormField`), nút kích hoạt gửi thông báo.
 5. **Interactive States:** Loading khi phân tích luật chuyên cần; dialog xác nhận danh sách sinh viên nhận cảnh báo trước khi gửi.
 6. **Edge Cases & Error Handling:** Tránh trùng lặp thông báo (deduplication) thông qua khóa sự kiện lưu trong `shared_preferences`; gửi qua endpoint Firebase Cloud Function.
+
+---
+
+### 📱 SCR-09: Attendance Reports & Analytics
+1. **Screen Name & Route:** `ReportsPage` (`/reports`), file: `lib/features/reports/reports_page.dart`
+2. **Layout & Responsive Behavior:** Bộ lọc đa tiêu chí (Học kỳ, Môn học, Lớp học), thẻ tóm tắt tỷ lệ vắng và bảng thống kê chi tiết theo từng sinh viên.
+3. **Design Tokens Applied:** `AppColors.surfaceContainer`, `AppColors.errorContainer`, `AppColors.green`.
+4. **Widgets & Components:** Thẻ Metric tỷ lệ có mặt trung bình, danh sách cảnh báo nguy cơ cấm thi, nút xuất file CSV.
+5. **Interactive States:** Lọc động tức thì khi chọn thay đổi dropdown; hiển thị badge phân loại sinh viên (`OK`, `CẢNH BÁO 15%`, `CẤM THI 20%`).
+6. **Edge Cases & Error Handling:** Bộ lọc không có dữ liệu $\rightarrow$ Hiển thị hướng dẫn chọn kỳ học hoặc lớp khác.
+
+---
+
+### 📱 SCR-10: Supporting UX States & Dialogs
+1. **Screen Name & Scope:** Hệ thống trạng thái hỗ trợ UX (`EmptyState`, `SkeletonLoading`, `OfflineBanner`, `ConfirmDialogs`), file: `lib/core/widgets/` & các trang tính năng.
+2. **Layout & Responsive Behavior:**
+   - **Skeleton:** Card giả lập hiệu ứng shimmer mờ nhẹ khi chờ phản hồi Google Sheets API.
+   - **Empty State:** Hình minh họa nhẹ nhàng kèm tiêu đề và nút kêu gọi hành động (Call To Action).
+   - **Offline / Error Banner:** Thanh thông báo màu vàng/cam gắn cố định đầu màn hình kèm nút Thử lại (Retry).
+   - **Dialogs:** Hộp thoại xác nhận nộp điểm danh và xác nhận đăng xuất chuẩn Material Design 3.
+3. **Design Tokens Applied:** `AppColors.surfaceLow`, `AppColors.outlineVariant`, `AppColors.error`.
+4. **Widgets & Components:** `AlertDialog`, `SnackBar`, `Banner`, Container bo góc tròn `6px`.
+5. **Interactive States:** Hiển thị tự động khi mất kết nối mạng hoặc khi xảy ra sự kiện hủy/xác nhận.
+6. **Edge Cases & Error Handling:** Cho phép hủy (Cancel) mọi thao tác nguy hiểm để tránh mất mát dữ liệu ngoài ý muốn.
+
+---
+
+### 📱 SCR-11: Settings Screen
+1. **Screen Name & Route:** `SettingsPage` (`/settings`), file: `lib/features/settings/settings_page.dart`
+2. **Layout & Responsive Behavior:** Form cấu hình dạng danh sách nhóm cài đặt (Settings Group List): Ngưỡng cảnh báo, Tùy chọn đồng bộ, Chọn Campus mặc định, Thông tin giảng viên.
+3. **Design Tokens Applied:** `AppColors.surfaceContainer`, `AppColors.primary`, `AppColors.outlineVariant`.
+4. **Widgets & Components:** `SwitchListTile`, `DropdownButtonFormField`, `TextFormField`, nút "Save Settings" và nút "Reset Defaults".
+5. **Interactive States:** Toggle bật/tắt gửi email tự động; lưu cấu hình ngay vào `shared_preferences`.
+6. **Edge Cases & Error Handling:** Kiểm tra ràng buộc ngưỡng cảnh báo (0% < Ngưỡng nhắc nhở < Ngưỡng cấm thi <= 100%).
 
 ---
 
