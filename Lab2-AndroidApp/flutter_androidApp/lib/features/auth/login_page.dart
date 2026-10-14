@@ -6,7 +6,10 @@ import '../../services/google_sheet_service.dart';
 class LoginPage extends StatefulWidget {
   final GoogleSheetService service;
 
-  const LoginPage({super.key, required this.service});
+  /// True after Logout: the cached token is discarded instead of reused.
+  final bool loggedOut;
+
+  const LoginPage({super.key, required this.service, this.loggedOut = false});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -15,6 +18,32 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.loggedOut) {
+      widget.service.signOut();
+    } else {
+      _signInWithCachedCredentials();
+    }
+  }
+
+  Future<void> _signInWithCachedCredentials() async {
+    if (!await widget.service.hasCachedCredentials()) return;
+    if (!mounted) return;
+    setState(() => _loading = true);
+    final connected = await widget.service.init();
+    if (!mounted) return;
+    if (connected) {
+      context.go('/take-attendance');
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _error = widget.service.lastError ?? 'Google authentication failed.';
+    });
+  }
 
   Future<void> _connect() async {
     setState(() {

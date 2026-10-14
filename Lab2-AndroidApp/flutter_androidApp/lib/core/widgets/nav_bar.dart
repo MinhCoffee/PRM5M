@@ -95,7 +95,10 @@ class MobileNavBar extends StatelessWidget {
         for (final index in primaryItems.take(4))
           NavigationDestination(
             icon: Icon(NavBar.items[index].$3),
-            label: NavBar.items[index].$1,
+            // "Take Attendance" wraps onto two lines in a five-item bar.
+            label: NavBar.items[index].$1 == 'Take Attendance'
+                ? 'Attendance'
+                : NavBar.items[index].$1,
           ),
         const NavigationDestination(icon: Icon(Icons.menu), label: 'More'),
       ],

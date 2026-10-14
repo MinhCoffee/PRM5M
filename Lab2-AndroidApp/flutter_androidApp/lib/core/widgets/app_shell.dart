@@ -15,14 +15,19 @@ class AppShell extends StatelessWidget {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 700;
         return Scaffold(
-          body: Column(
-            children: [
-              const AppHeader(),
-              if (!isMobile) const NavBar(),
-              const BreadcrumbBar(),
-              Expanded(child: child),
-              if (!isMobile) const AppFooter(),
-            ],
+          // Keep the header out of the system status bar; the bottom inset
+          // is handled by the NavigationBar on mobile.
+          body: SafeArea(
+            bottom: !isMobile,
+            child: Column(
+              children: [
+                const AppHeader(),
+                if (!isMobile) const NavBar(),
+                const BreadcrumbBar(),
+                Expanded(child: child),
+                if (!isMobile) const AppFooter(),
+              ],
+            ),
           ),
           bottomNavigationBar: isMobile ? const MobileNavBar() : null,
         );

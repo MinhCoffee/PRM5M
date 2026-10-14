@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
@@ -127,6 +129,16 @@ class GoogleSheetService {
     _scheduleSheet = null;
     _attendanceSheet = null;
     _lastError = null;
+  }
+
+  /// Whether a previous sign-in left a refresh token that [init] can reuse
+  /// without opening the browser.
+  Future<bool> hasCachedCredentials() async {
+    try {
+      return await (await _credentialsFile()).exists();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> init({bool forceReauth = false}) async {
@@ -911,9 +923,147 @@ class GoogleSheetService {
     return authorization.authClient(scopes: _sheetScopes);
   }
 
+  static const _scopes = ['https://www.googleapis.com/auth/spreadsheets'];
+
+  /// iOS loopback server OAuth exchange (when native SDK is not used).
+  Future<auth.AutoRefreshingAuthClient> _requestMobileUserClient(
+    auth.ClientId clientId,
+  ) async {
+    final random = Random.secure();
+    String randomString(int length) => base64UrlEncode(
+      List<int>.generate(length, (_) => random.nextInt(256)),
+    ).replaceAll('=', '');
+    final codeVerifier = randomString(64);
+    final codeChallenge = base64UrlEncode(
+      sha256.convert(ascii.encode(codeVerifier)).bytes,
+    ).replaceAll('=', '');
+    final state = randomString(16);
+
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final redirectUri = 'http://localhost:${server.port}';
+    try {
+      final authUri = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
+        'client_id': clientId.identifier,
+        'response_type': 'code',
+        'redirect_uri': redirectUri,
+        'scope': _scopes.join(' '),
+        'state': state,
+        'code_challenge': codeChallenge,
+        'code_challenge_method': 'S256',
+        'access_type': 'offline',
+        'prompt': 'select_account',
+      });
+      final opened = await launchUrl(
+        authUri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        throw const GoogleSheetException(
+          'Could not open the Google authorization page.',
+        );
+      }
+
+      final code = await _awaitAuthorizationCode(server, state);
+      await _waitUntilForeground();
+      final baseClient = http.Client();
+      final credentials = await _exchangeCodeWithRetry(
+        baseClient,
+        clientId,
+        code,
+        redirectUri,
+        codeVerifier,
+      );
+      return auth.autoRefreshingClient(clientId, credentials, baseClient);
+    } finally {
+      await server.close(force: true);
+    }
+  }
+
+  Future<String> _awaitAuthorizationCode(HttpServer server, String state) async {
+    await for (final request in server.timeout(const Duration(minutes: 5))) {
+      final params = request.uri.queryParameters;
+      if (request.uri.path != '/' || params['state'] != state) {
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+        continue;
+      }
+      final code = params['code'];
+      final error = params['error'];
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.html
+        ..write(
+          '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+          '<body style="font-family:sans-serif;text-align:center;padding:48px 16px">'
+          '<h2>${code != null ? 'Signed in' : 'Sign-in failed'}</h2>'
+          '<p>Return to the FAP Attendance app to continue.</p></body></html>',
+        );
+      await request.response.close();
+      if (code == null) {
+        throw GoogleSheetException(
+          'Google sign-in was not completed${error == null ? '' : ': $error'}.',
+        );
+      }
+      return code;
+    }
+    throw const GoogleSheetException('Google sign-in timed out.');
+  }
+
+  Future<void> _waitUntilForeground() async {
+    if (WidgetsBinding.instance.lifecycleState ==
+        AppLifecycleState.resumed) {
+      return;
+    }
+    final resumed = Completer<void>();
+    final listener = AppLifecycleListener(
+      onResume: () {
+        if (!resumed.isCompleted) resumed.complete();
+      },
+    );
+    try {
+      await resumed.future.timeout(const Duration(minutes: 5));
+    } on TimeoutException {
+      throw const GoogleSheetException(
+        'Return to the app after signing in with Google.',
+      );
+    } finally {
+      listener.dispose();
+    }
+  }
+
+  Future<auth.AccessCredentials> _exchangeCodeWithRetry(
+    http.Client client,
+    auth.ClientId clientId,
+    String code,
+    String redirectUri,
+    String codeVerifier,
+  ) async {
+    // The network can stay blocked for a moment after the app resumes.
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await auth.obtainAccessCredentialsViaCodeExchange(
+          client,
+          clientId,
+          code,
+          redirectUrl: redirectUri,
+          codeVerifier: codeVerifier,
+        );
+      } on SocketException {
+        if (attempt >= 4) rethrow;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      } on http.ClientException {
+        if (attempt >= 4) rethrow;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+  }
+
   Future<auth.AutoRefreshingAuthClient> _requestUserClient(
     auth.ClientId clientId,
   ) async {
+    if (Platform.isIOS) {
+      return _requestMobileUserClient(clientId);
+    }
     final client = await auth.clientViaUserConsent(
       clientId,
       const ['https://www.googleapis.com/auth/spreadsheets'],

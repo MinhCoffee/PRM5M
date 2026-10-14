@@ -198,8 +198,11 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
                       label: const Text('Highest absence subject'),
                     ),
                     SizedBox(
-                      width: 260,
+                      width: MediaQuery.sizeOf(context).width < 700
+                          ? double.infinity
+                          : 260,
                       child: DropdownButtonFormField<String>(
+                        isExpanded: true,
                         // initialValue and items always come from the SAME source list.
                         // Dropdown is disabled when list is empty.
                         initialValue: students.isEmpty
@@ -214,6 +217,7 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
                                 value: student.studentId,
                                 child: Text(
                                   '${student.studentCode} ${student.fullName}',
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             )

@@ -41,7 +41,10 @@ class AttendanceApp extends StatelessWidget {
       routes: [
         GoRoute(
           path: '/login',
-          builder: (context, state) => LoginPage(service: sheetService),
+          builder: (context, state) => LoginPage(
+            service: sheetService,
+            loggedOut: state.uri.queryParameters['logout'] == '1',
+          ),
         ),
         ShellRoute(
           builder: (context, state, child) => AppShell(child: child),

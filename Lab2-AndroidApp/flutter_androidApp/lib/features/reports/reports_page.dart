@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/attendance_stats_service.dart';
+import '../../services/file_service.dart';
 
 class ReportsPage extends StatefulWidget {
   final AttendanceStatsService stats;
@@ -49,8 +48,6 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Future<void> _exportCsv() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}${Platform.pathSeparator}fap_attendance_report.csv');
       final lines = <String>['student_code,full_name,class_code,sessions_held,absent_count,absence_rate,status'];
       for (final row in _rows) {
         lines.add([
@@ -63,8 +60,13 @@ class _ReportsPageState extends State<ReportsPage> {
           row.status.value,
         ].map(_csv).join(','));
       }
-      await file.writeAsString('${lines.join('\n')}\n');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Report exported to ${file.path}')));
+      final savedPath = await FileService().saveTextFile(
+        dialogTitle: 'Save attendance report',
+        fileName: 'fap_attendance_report.csv',
+        content: '${lines.join('\n')}\n',
+        extensions: ['csv'],
+      );
+      if (savedPath != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Report exported to $savedPath')));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $error')));
     }
@@ -79,7 +81,9 @@ class _ReportsPageState extends State<ReportsPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
         if (snapshot.hasError) return Center(child: Text('Could not load report data: ${snapshot.error}'));
-        return ListView(padding: const EdgeInsets.all(24), children: [
+        final narrow = MediaQuery.sizeOf(context).width < 700;
+        final rows = _rows;
+        return ListView(padding: EdgeInsets.all(narrow ? 16 : 24), children: [
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Reports', style: Theme.of(context).textTheme.headlineLarge),
@@ -95,7 +99,27 @@ class _ReportsPageState extends State<ReportsPage> {
             _filter('Class', _classCode, _classes, (value) => setState(() => _classCode = value!)),
           ]))),
           const SizedBox(height: 16),
-          Card(clipBehavior: Clip.antiAlias, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
+          // Six columns do not fit on a phone, so show one card per student there.
+          if (narrow)
+            ...rows.map((row) {
+              final color = row.status == StudentRiskStatus.banned ? AppColors.error : row.status == StudentRiskStatus.warning ? AppColors.tertiary : AppColors.green;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${row.student.studentCode}  ${row.student.fullName}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 2),
+                      Text('${row.student.classId}  ·  ${row.absentCount}/${row.sessionsHeld} absent  ·  ${(row.absenceRate * 100).toStringAsFixed(1)}%', style: Theme.of(context).textTheme.bodySmall),
+                    ])),
+                    const SizedBox(width: 8),
+                    Text(row.status.value.toUpperCase(), style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              );
+            })
+          else Card(clipBehavior: Clip.antiAlias, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(
             headingRowColor: const WidgetStatePropertyAll(AppColors.primaryDark),
             headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             columns: const [
@@ -106,7 +130,7 @@ class _ReportsPageState extends State<ReportsPage> {
               DataColumn(label: Text('ABSENCE %')),
               DataColumn(label: Text('STATUS')),
             ],
-            rows: _rows.map((row) => DataRow(cells: [
+            rows: rows.map((row) => DataRow(cells: [
               DataCell(Text('${row.student.studentCode}  ${row.student.fullName}')),
               DataCell(Text(row.student.classId)),
               DataCell(Text('${row.sessionsHeld}')),
