@@ -66,9 +66,9 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
         .where((row) => row.status == StudentRiskStatus.banned)
         .toList();
     final text = rows.isEmpty
-        ? 'AI scanned all subjects and found no students above the 15% absence warning threshold.'
+        ? 'AI scanned all subjects and found no students at or above the ${_percent(widget.stats.warnThreshold)} absence warning threshold.'
         : [
-            'AI scanned all subjects. Rule: >15% to 20% is warning, >20% is banned.',
+            'AI scanned all subjects. Rule: $_ruleText.',
             if (bannedRows.isNotEmpty)
               'Banned: ${bannedRows.take(10).map(_studentRiskText).join('; ')}.',
             if (warningRows.isNotEmpty)
@@ -133,6 +133,9 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
 
   String _percent(double value) => '${(value * 100).toStringAsFixed(1)}%';
 
+  String get _ruleText =>
+      '>=${_percent(widget.stats.warnThreshold)} absence is warning, >=${_percent(widget.stats.banThreshold)} is banned';
+
   String _riskLabel(StudentRiskStatus status) => switch (status) {
     StudentRiskStatus.ok => 'OK',
     StudentRiskStatus.warning => 'WARNING',
@@ -176,7 +179,7 @@ class _AiAssistantPageState extends State<AiAssistantPage> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Rule-based answers across all subjects: >15% to 20% absence is warning, >20% is banned.',
+              'Rule-based answers across all subjects: $_ruleText (configurable in Settings).',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 20),

@@ -54,6 +54,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
       final session = sessions.firstWhere((item) => item.id == widget.sessionId);
       final students = await widget.repository.studentsForSession(widget.sessionId);
       final submitted = await widget.repository.isSessionSubmitted(widget.sessionId);
+      await widget.stats?.loadThresholds();
       if (!mounted) return;
       setState(() {
         _session = session;
@@ -345,13 +346,13 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                 'Present',
                 '$_presentCount',
                 const Color(0xFFE0F2FE),
-                AppColors.primary,
+                AppColors.primaryDark,
               ),
               _counter(
                 'Absent',
                 '$_absentCount',
                 AppColors.errorContainer,
-                AppColors.error,
+                AppColors.errorText,
               ),
               _counter(
                 'Rate',
@@ -506,8 +507,8 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
               const SizedBox(width: 8),
               const StatusChip(label: 'Absent', type: StatusChipType.absent),
               const SizedBox(width: 8),
-              const StatusChip(
-                label: 'Critical Risk (>=20%)',
+              StatusChip(
+                label: 'Critical Risk (>=${_percentLabel(_banThreshold)})',
                 type: StatusChipType.warning,
                 showIcon: true,
               ),
@@ -595,14 +596,14 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
           ],
         ),
         const SizedBox(height: 8),
-        const Wrap(
+        Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
-            StatusChip(label: 'Present', type: StatusChipType.present),
-            StatusChip(label: 'Absent', type: StatusChipType.absent),
+            const StatusChip(label: 'Present', type: StatusChipType.present),
+            const StatusChip(label: 'Absent', type: StatusChipType.absent),
             StatusChip(
-              label: 'Critical Risk (>=20%)',
+              label: 'Critical Risk (>=${_percentLabel(_banThreshold)})',
               type: StatusChipType.warning,
               showIcon: true,
             ),
@@ -662,16 +663,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              StatusChip(
-                label:
-                    '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(student.absenceRate * 100).toStringAsFixed(1)}%)',
-                type: student.absenceRate >= .2
-                    ? StatusChipType.absent
-                    : student.absenceRate >= .14
-                    ? StatusChipType.warning
-                    : StatusChipType.neutral,
-                showIcon: student.absenceRate >= .2,
-              ),
+              _absenceChip(student),
             ],
           ),
           const SizedBox(height: 10),
@@ -760,18 +752,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
         ),
       ),
       DataCell(_statusToggle(student)),
-      DataCell(
-        StatusChip(
-          label:
-              '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(student.absenceRate * 100).toStringAsFixed(1)}%)',
-          type: student.absenceRate >= .2
-              ? StatusChipType.absent
-              : student.absenceRate >= .14
-              ? StatusChipType.warning
-              : StatusChipType.neutral,
-          showIcon: student.absenceRate >= .2,
-        ),
-      ),
+      DataCell(_absenceChip(student)),
       DataCell(
         SizedBox(
           width: 220,
@@ -800,31 +781,82 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     ),
   );
 
+  // Same thresholds as Settings / Reports / AI Assistant, so a student's
+  // risk colour is identical on every page.
+  double get _warnThreshold =>
+      widget.stats?.warnThreshold ?? AttendanceStatsService.defaultWarnThreshold;
+  double get _banThreshold =>
+      widget.stats?.banThreshold ?? AttendanceStatsService.defaultBanThreshold;
+
+  String _percentLabel(double value) {
+    final percent = value * 100;
+    return percent == percent.roundToDouble()
+        ? '${percent.toStringAsFixed(0)}%'
+        : '${percent.toStringAsFixed(1)}%';
+  }
+
+  Widget _absenceChip(AttendanceStudent student) {
+    final rate = student.absenceRate;
+    final banned = rate >= _banThreshold;
+    return StatusChip(
+      label:
+          '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(rate * 100).toStringAsFixed(1)}%)',
+      type: banned
+          ? StatusChipType.absent
+          : rate >= _warnThreshold
+          ? StatusChipType.warning
+          : StatusChipType.neutral,
+      showIcon: banned,
+    );
+  }
+
   Widget _statusButton(
     AttendanceStudent student,
     AttendanceState status,
     String label,
   ) {
     final selected = student.status == status;
-    return InkWell(
-      onTap: () => setState(() => student.status = status),
-      borderRadius: BorderRadius.circular(4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? (status == AttendanceState.present
-                    ? AppColors.primary
-                    : AppColors.error)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : AppColors.onSurfaceVariant,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+    final isPresent = status == AttendanceState.present;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Mark ${student.fullName} as $label',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => setState(() => student.status = status),
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          // Minimum 48dp touch target (Material / WCAG 2.5.5).
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 72),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? (isPresent ? AppColors.primary : AppColors.error)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon + text so the state is not conveyed by colour alone.
+              if (selected) ...[
+                Icon(
+                  isPresent ? Icons.check : Icons.close,
+                  size: 14,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : AppColors.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -17,6 +17,13 @@ abstract final class AppColors {
   static const green = Color(0xFF6CB33F);
   static const error = Color(0xFFD93025);
   static const errorContainer = Color(0xFFFCE8E6);
+
+  // Text colours for tinted chips/counters. The base `error` (#D93025) and
+  // amber (#B76E00) only reach ~4.0:1 / ~3.6:1 on their light containers,
+  // below WCAG AA for 12sp text; these darker shades reach >= 5.5:1.
+  static const errorText = Color(0xFFB3261E);
+  static const warningText = Color(0xFF8A5300);
+  static const successText = Color(0xFF1B6E2E);
 }
 
 abstract final class AppTheme {
@@ -71,13 +78,14 @@ abstract final class AppTheme {
         filled: true,
         fillColor: AppColors.surface,
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        // `outline` gives >= 3:1 against the surface (WCAG 1.4.11).
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+          borderSide: const BorderSide(color: AppColors.outline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+          borderSide: const BorderSide(color: AppColors.outline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),

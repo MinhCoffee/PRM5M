@@ -106,11 +106,16 @@ class AttendanceStatsService {
 
   bool get isLoaded => _loaded;
 
-  Future<void> load({bool force = false}) async {
-    if (_loaded && !force) return;
+  /// Reads only the Settings thresholds (no Google Sheets call).
+  Future<void> loadThresholds() async {
     final preferences = await SharedPreferences.getInstance();
     warnThreshold = preferences.getDouble(_warnKey) ?? defaultWarnThreshold;
     banThreshold = preferences.getDouble(_banKey) ?? defaultBanThreshold;
+  }
+
+  Future<void> load({bool force = false}) async {
+    if (_loaded && !force) return;
+    await loadThresholds();
     final result = await Future.wait([
       sheetService.getAllStudents(),
       sheetService.getSchedule(),
@@ -170,11 +175,9 @@ class AttendanceStatsService {
     return StudentRiskStatus.ok;
   }
 
-  StudentRiskStatus attendancePolicyStatus(double rate) {
-    if (rate > defaultBanThreshold) return StudentRiskStatus.banned;
-    if (rate > defaultWarnThreshold) return StudentRiskStatus.warning;
-    return StudentRiskStatus.ok;
-  }
+  /// Kept for callers that ask for the "policy" status (AI Assistant). It now
+  /// uses the thresholds configured in Settings so every page agrees.
+  StudentRiskStatus attendancePolicyStatus(double rate) => studentStatus(rate);
 
   SessionStatus sessionStatus(SheetScheduleRow session) {
 final sessionDate = DateTime.tryParse(session.sessionDate);
