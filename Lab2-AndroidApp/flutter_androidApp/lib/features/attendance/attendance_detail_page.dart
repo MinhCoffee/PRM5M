@@ -1,22 +1,18 @@
 import 'package:flutter/material.dart';
-
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/state_view.dart';
 import '../../core/widgets/status_chip.dart';
 import 'attendance_student.dart';
 import 'data/attendance_repository.dart';
-import '../../services/attendance_stats_service.dart';
+import 'viewmodel/attendance_detail_viewmodel.dart';
 
 class AttendanceDetailPage extends StatefulWidget {
-  final String sessionId;
-  final AttendanceRepository repository;
-  final AttendanceStatsService? stats;
+  final AttendanceDetailViewModel viewModel;
   final Future<void> Function()? onAttendanceSaved;
 
   const AttendanceDetailPage({
     super.key,
-    required this.sessionId,
-    required this.repository,
-    this.stats,
+    required this.viewModel,
     this.onAttendanceSaved,
   });
 
@@ -25,21 +21,15 @@ class AttendanceDetailPage extends StatefulWidget {
 }
 
 class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
-  List<AttendanceStudent> _students = [];
-  AttendanceSession? _session;
-  Object? _loadError;
-  bool _loading = true;
-  bool _saving = false;
-  bool _submitted = false;
   final _searchController = TextEditingController();
-  String _searchQuery = '';
   String _statusFilter = 'all';
-  final Map<String, AttendanceState> _initialStatuses = {};
 
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.viewModel.loadSessionDetails();
+    });
   }
 
   @override
@@ -48,218 +38,201 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    try {
-      final sessions = await widget.repository.getSessions();
-      final session = sessions.firstWhere((item) => item.id == widget.sessionId);
-      final students = await widget.repository.studentsForSession(widget.sessionId);
-      final submitted = await widget.repository.isSessionSubmitted(widget.sessionId);
-      await widget.stats?.loadThresholds();
-      if (!mounted) return;
-      setState(() {
-        _session = session;
-        _students = students;
-        _submitted = submitted;
-        _initialStatuses
-          ..clear()
-          ..addEntries(
-            students.map(
-              (student) => MapEntry(
-                student.studentId.isEmpty ? student.rollNo : student.studentId,
-                student.status,
-              ),
-            ),
-          );
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = error;
-        _loading = false;
-      });
-    }
-  }
+  Future<void> _handleSave({required bool submitted}) async {
+    final success = await widget.viewModel.saveAttendance(submitted: submitted);
+    if (!mounted) return;
 
-  int get _presentCount => _students
-      .where((student) => student.status == AttendanceState.present)
-      .length;
-  int get _absentCount => _students.length - _presentCount;
-
-  List<AttendanceStudent> get _visibleStudents => _students.where((student) {
-    final query = _searchQuery.trim().toLowerCase();
-    final matchesQuery =
-        query.isEmpty ||
-        student.rollNo.toLowerCase().contains(query) ||
-        student.fullName.toLowerCase().contains(query);
-    final matchesStatus =
-        _statusFilter == 'all' ||
-        (_statusFilter == 'present' &&
-            student.status == AttendanceState.present) ||
-        (_statusFilter == 'absent' && student.status == AttendanceState.absent);
-    return matchesQuery && matchesStatus;
-  }).toList();
-
-  void _setAll(AttendanceState status) => setState(() {
-    for (final student in _students) {
-      student.status = status;
-    }
-  });
-
-  void _resetStatuses() => setState(() {
-    for (final student in _students) {
-      student.status =
-          _initialStatuses[student.studentId.isEmpty
-              ? student.rollNo
-              : student.studentId] ??
-          AttendanceState.present;
-    }
-  });
-
-  Future<void> _save({required bool submitted}) async {
-    if (_session == null || _saving) return;
-    setState(() => _saving = true);
-    try {
-      await widget.repository.saveAttendance(widget.sessionId, _students, submitted: submitted);
-      await widget.stats?.load(force: true);
+    if (success) {
       await widget.onAttendanceSaved?.call();
-      if (!mounted) return;
-      setState(() {
-        _submitted = submitted;
-        _saving = false;
-        _initialStatuses
-          ..clear()
-          ..addEntries(
-            _students.map(
-              (student) => MapEntry(
-                student.studentId.isEmpty ? student.rollNo : student.studentId,
-                student.status,
-              ),
-            ),
-          );
-      });
       _showMessage(
         submitted
-            ? 'Attendance submitted successfully'
-            : 'Draft saved successfully',
+            ? 'Đã nộp điểm danh thành công lên hệ thống.'
+            : 'Đã lưu bản nháp điểm danh thành công.',
+        isError: false,
       );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      _showMessage('Could not save attendance: $error');
+    } else {
+      _showMessage(
+        'Lỗi lưu dữ liệu. Đã tự động sao lưu vào bộ nhớ máy an toàn.',
+        isError: true,
+      );
     }
   }
 
-  Future<void> _submit() async {
-    final confirmed =
-        await showDialog<bool>(
+  Future<void> _handleConfirmSubmit() async {
+    final session = widget.viewModel.session;
+    if (session == null) return;
+
+    final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Submit attendance?'),
+            title: const Text('Xác nhận nộp điểm danh?'),
             content: Text(
-              'Submit ${_session!.subjectCode} for ${_session!.className}?',
+              'Xác nhận nộp điểm danh môn ${session.subjectCode} cho lớp ${session.className}?\n'
+              'Sĩ số: Có mặt ${widget.viewModel.presentCount} / Vắng ${widget.viewModel.absentCount}.',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: const Text('Hủy'),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Submit'),
+                child: const Text('Xác nhận nộp'),
               ),
             ],
           ),
         ) ??
         false;
+
     if (confirmed && mounted) {
-      await _save(submitted: true);
+      await _handleSave(submitted: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_loadError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('Could not load attendance: $_loadError'),
-        ),
-      );
-    }
-    if (_session == null) {
-      return const Center(child: Text('Session not found.'));
-    }
-    return SingleChildScrollView(child: _content(context));
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) {
+        return StateView<AttendanceDetailData>(
+          state: widget.viewModel.state,
+          loadingMessage: 'Đang tải danh sách sinh viên ca học...',
+          onRetry: () => widget.viewModel.loadSessionDetails(),
+          onData: (context, data) => _buildContent(context, data),
+        );
+      },
+    );
   }
 
   bool get _narrow => MediaQuery.sizeOf(context).width < 700;
 
-  Widget _content(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 1400),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          _narrow ? 12 : 20,
-          _narrow ? 12 : 20,
-          _narrow ? 12 : 20,
-          24,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _sessionCard(context),
-            const SizedBox(height: 12),
-            _controlBar(context),
-            const SizedBox(height: 12),
-            _rosterCard(context),
-            const SizedBox(height: 12),
-            _autosaveBar(context),
-          ],
+  Widget _buildContent(BuildContext context, AttendanceDetailData data) {
+    final session = data.session;
+    final saveError = widget.viewModel.saveErrorMessage;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        _narrow ? 12 : 20,
+        _narrow ? 12 : 20,
+        _narrow ? 12 : 20,
+        24,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Error Recovery Banner (Flow 2)
+              if (saveError != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.error),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cloud_off, color: AppColors.errorText),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'LỖI KẾT NỐI - ĐÃ SAO LƯU BẢN NHÁP CỤC BỘ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.errorText,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              saveError,
+                              style: const TextStyle(
+                                color: AppColors.errorText,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: widget.viewModel.isSaving
+                            ? null
+                            : () => widget.viewModel.retrySaving(
+                                  submitted: widget.viewModel.isSubmitted,
+                                ),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Retry Saving'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              _sessionCard(context, session),
+              const SizedBox(height: 12),
+              _controlBar(context, data),
+              const SizedBox(height: 12),
+              _rosterCard(context, data),
+              const SizedBox(height: 12),
+              _autosaveBar(context),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _sessionCard(BuildContext context) {
+  Widget _sessionCard(BuildContext context, AttendanceSession session) {
     final items = [
       _sessionItem(
         context,
         Icons.menu_book_outlined,
-        'Subject & Course',
-        _session!.subjectCode,
-        _session!.subjectName,
+        'Môn học & Học phần',
+        session.subjectCode,
+        session.subjectName,
       ),
       _sessionItem(
         context,
         Icons.groups_outlined,
-        'Cohort & Schedule',
-        'Class ${_session!.className}',
-        _session!.schedule,
+        'Lớp & Ca học',
+        'Lớp ${session.className}',
+        session.schedule,
       ),
       _sessionItem(
         context,
         Icons.meeting_room_outlined,
-        'Campus Space',
-        _session!.room,
-        _session!.date,
+        'Phòng học & Ngày',
+        session.room,
+        session.date,
       ),
       _sessionItem(
         context,
         Icons.calendar_month_outlined,
-        'Session',
-        'Session ${_session!.sessionNumber} / ${_session!.totalSessions}',
+        'Tiến độ buổi học',
+        'Buổi ${session.sessionNumber} / ${session.totalSessions}',
         '',
       ),
     ];
+
     return Card(
       child: Column(
         children: [
-          const SizedBox(height: 6, child: ColoredBox(color: AppColors.primary)),
+          const SizedBox(
+            height: 6,
+            child: ColoredBox(color: AppColors.primary),
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
-            // Four columns do not fit on a phone, so lay them out two per row.
             child: _narrow
                 ? LayoutBuilder(
                     builder: (context, constraints) => Wrap(
@@ -287,155 +260,185 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     String label,
     String value,
     String detail,
-  ) => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.surfaceContainer,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, color: AppColors.primary, size: 20),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                  letterSpacing: 1,
-                ),
-              ),
-              Text(value, style: Theme.of(context).textTheme.headlineMedium),
-              if (detail.isNotEmpty)
-                Text(
-                  detail,
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: AppColors.onSurfaceVariant),
-                  overflow: TextOverflow.ellipsis,
-                ),
-            ],
-          ),
-        ),
-      ],
-  );
-
-  Widget _controlBar(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        runSpacing: 10,
-        spacing: 16,
+  ) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 6,
-            children: [
-              _counter(
-                'Enrolled',
-                '${_students.length}',
-                AppColors.surfaceContainer,
-                AppColors.onSurfaceVariant,
-              ),
-              _counter(
-                'Present',
-                '$_presentCount',
-                const Color(0xFFE0F2FE),
-                AppColors.primaryDark,
-              ),
-              _counter(
-                'Absent',
-                '$_absentCount',
-                AppColors.errorContainer,
-                AppColors.errorText,
-              ),
-              _counter(
-                'Rate',
-                _students.isEmpty
-                    ? '0.0%'
-                    : '${(_presentCount / _students.length * 100).toStringAsFixed(1)}%',
-                const Color(0xFFD1E4FF),
-                const Color(0xFF184974),
-              ),
-            ],
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainer,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 20),
           ),
-          Wrap(
-            spacing: 6,
-            children: [
-              _actionButton(
-                Icons.done_all,
-                'Mark All Present',
-                () => _setAll(AttendanceState.present),
-                primary: true,
-              ),
-              _actionButton(
-                Icons.remove_done,
-                'Mark All Absent',
-                () => _setAll(AttendanceState.absent),
-                danger: true,
-              ),
-              _actionButton(Icons.restart_alt, 'Reset', _resetStatuses),
-              _actionButton(Icons.save_outlined, _saving ? 'Saving...' : 'Save Draft', _saving ? () {} : () => _save(submitted: false), filled: true),
-              _actionButton(Icons.cloud_sync_outlined, _saving ? 'Submitting...' : (_submitted ? 'Update & Submit' : 'Submit'), _saving ? () {} : _submit, filled: true, orange: true),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Search by roll number or full name',
-                    isDense: true,
-                  ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.onSurfaceVariant,
+                        letterSpacing: 0.5,
+                      ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: _statusFilter,
-                onChanged: (value) =>
-                    setState(() => _statusFilter = value ?? 'all'),
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('All students')),
-                  DropdownMenuItem(value: 'present', child: Text('Present')),
-                  DropdownMenuItem(value: 'absent', child: Text('Absent')),
-                ],
-              ),
-            ],
+                Text(value, style: Theme.of(context).textTheme.headlineMedium),
+                if (detail.isNotEmpty)
+                  Text(
+                    detail,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.onSurfaceVariant,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
           ),
         ],
+      );
+
+  Widget _controlBar(BuildContext context, AttendanceDetailData data) {
+    final isSaving = widget.viewModel.isSaving;
+    final isSubmitted = widget.viewModel.isSubmitted;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 10,
+              spacing: 16,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    _counter(
+                      'Sĩ số',
+                      '${widget.viewModel.students.length}',
+                      AppColors.surfaceContainer,
+                      AppColors.onSurfaceVariant,
+                    ),
+                    _counter(
+                      'Có mặt',
+                      '${widget.viewModel.presentCount}',
+                      const Color(0xFFE0F2FE),
+                      AppColors.primaryDark,
+                    ),
+                    _counter(
+                      'Vắng mặt',
+                      '${widget.viewModel.absentCount}',
+                      AppColors.errorContainer,
+                      AppColors.errorText,
+                    ),
+                    _counter(
+                      'Tỷ lệ',
+                      '${(widget.viewModel.attendanceRate * 100).toStringAsFixed(1)}%',
+                      const Color(0xFFD1E4FF),
+                      const Color(0xFF184974),
+                    ),
+                  ],
+                ),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    _actionButton(
+                      Icons.done_all,
+                      'Có mặt tất cả',
+                      () => widget.viewModel.setAll(AttendanceState.present),
+                      primary: true,
+                    ),
+                    _actionButton(
+                      Icons.remove_done,
+                      'Vắng tất cả',
+                      () => widget.viewModel.setAll(AttendanceState.absent),
+                      danger: true,
+                    ),
+                    _actionButton(
+                      Icons.restart_alt,
+                      'Đặt lại',
+                      () => widget.viewModel.resetStatuses(),
+                    ),
+                    _actionButton(
+                      Icons.save_outlined,
+                      isSaving ? 'Đang lưu...' : 'Lưu nháp (Draft)',
+                      isSaving ? () {} : () => _handleSave(submitted: false),
+                      filled: true,
+                    ),
+                    _actionButton(
+                      Icons.cloud_sync_outlined,
+                      isSaving
+                          ? 'Đang gửi...'
+                          : (isSubmitted ? 'Cập nhật & Nộp' : 'Nộp điểm danh'),
+                      isSaving ? () {} : _handleConfirmSubmit,
+                      filled: true,
+                      orange: true,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => widget.viewModel.setSearchQuery(value),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Tìm theo MSSV hoặc họ tên sinh viên...',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                DropdownButton<String>(
+                  value: _statusFilter,
+                  onChanged: (value) {
+                    setState(() => _statusFilter = value ?? 'all');
+                    widget.viewModel.setStatusFilter(value ?? 'all');
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('Tất cả sinh viên')),
+                    DropdownMenuItem(value: 'present', child: Text('Có mặt')),
+                    DropdownMenuItem(value: 'absent', child: Text('Vắng mặt')),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _counter(
     String label,
     String value,
     Color background,
     Color foreground,
-  ) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-    decoration: BoxDecoration(
-      color: background,
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Text(
-      '$label: $value',
-      style: TextStyle(
-        color: foreground,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
+  ) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          '$label: $value',
+          style: TextStyle(
+            color: foreground,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
 
   Widget _actionButton(
     IconData icon,
@@ -445,180 +448,129 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     bool filled = false,
     bool danger = false,
     bool orange = false,
-  }) => OutlinedButton.icon(
-    onPressed: onPressed,
-    icon: Icon(icon, size: 17),
-    label: Text(label),
-    style: OutlinedButton.styleFrom(
-      foregroundColor: orange
-          ? Colors.white
-          : danger
-          ? AppColors.error
-          : primary
-          ? AppColors.primary
-          : filled
-          ? Colors.white
-          : AppColors.onSurface,
-      backgroundColor: orange
-          ? AppColors.tertiary
-          : filled
-          ? AppColors.secondary
-          : primary
-          ? Colors.white
-          : Colors.transparent,
-      side: BorderSide(
-        color: danger
-            ? AppColors.error
-            : primary
-            ? AppColors.outlineVariant
-            : filled
-            ? Colors.transparent
-            : AppColors.outlineVariant,
+  }) =>
+      OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: orange
+              ? Colors.white
+              : danger
+                  ? AppColors.error
+                  : primary
+                      ? AppColors.primary
+                      : filled
+                          ? Colors.white
+                          : AppColors.onSurface,
+          backgroundColor: orange
+              ? AppColors.tertiary
+              : filled
+                  ? AppColors.secondary
+                  : primary
+                      ? Colors.white
+                      : Colors.transparent,
+          side: BorderSide(
+            color: danger
+                ? AppColors.error
+                : primary
+                    ? AppColors.outlineVariant
+                    : filled
+                        ? Colors.transparent
+                        : AppColors.outlineVariant,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+      );
+
+  Widget _rosterCard(BuildContext context, AttendanceDetailData data) {
+    final visible = widget.viewModel.visibleStudents;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color: AppColors.surfaceHigh,
+            child: Row(
+              children: [
+                const Icon(Icons.how_to_reg, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Bảng kiểm tra sĩ số lớp',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const Spacer(),
+                Text(
+                  '${visible.length}/${widget.viewModel.students.length} hiển thị',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ],
+            ),
+          ),
+          if (_narrow)
+            ...visible.asMap().entries.map(
+                  (entry) => _studentCard(context, entry.key, entry.value, data),
+                )
+          else
+            SizedBox(
+              height: 440,
+              child: SingleChildScrollView(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowColor: const WidgetStatePropertyAll(
+                      AppColors.primaryDark,
+                    ),
+                    dataRowMinHeight: 54,
+                    dataRowMaxHeight: 58,
+                    columnSpacing: 18,
+                    horizontalMargin: 12,
+                    headingTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    columns: const [
+                      DataColumn(label: Text('STT')),
+                      DataColumn(label: Text('ẢNH')),
+                      DataColumn(label: Text('MSSV')),
+                      DataColumn(label: Text('HỌ TÊN + NGÀNH')),
+                      DataColumn(label: Text('GIỚI TÍNH')),
+                      DataColumn(label: Text('ĐIỂM DANH')),
+                      DataColumn(label: Text('VẮNG TÍCH LŨY')),
+                      DataColumn(label: Text('GHI CHÚ')),
+                    ],
+                    rows: visible
+                        .asMap()
+                        .entries
+                        .map(
+                          (entry) => _studentRow(
+                            context,
+                            entry.key,
+                            entry.value,
+                            data,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    ),
-  );
-
-  Widget _rosterCard(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _narrow ? _narrowRosterHeader(context) : Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          color: AppColors.surfaceHigh,
-          child: Row(
-            children: [
-              const Icon(Icons.how_to_reg, size: 18, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Active Roster Verification',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(width: 8),
-              const StatusChip(
-                label: 'Classroom Mode',
-                type: StatusChipType.present,
-              ),
-              const Spacer(),
-              const StatusChip(label: 'Present', type: StatusChipType.present),
-              const SizedBox(width: 8),
-              const StatusChip(label: 'Absent', type: StatusChipType.absent),
-              const SizedBox(width: 8),
-              StatusChip(
-                label: 'Critical Risk (>=${_percentLabel(_banThreshold)})',
-                type: StatusChipType.warning,
-                showIcon: true,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${_visibleStudents.length}/${_students.length} shown',
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-            ],
-          ),
-        ),
-        if (_narrow)
-          // The eight-column table hides the Present/Absent toggle on a
-          // phone, so each student gets a card instead.
-          ..._visibleStudents.asMap().entries.map(
-            (entry) => _studentCard(context, entry.key, entry.value),
-          )
-        else SizedBox(
-          height: 420,
-          child: SingleChildScrollView(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: const WidgetStatePropertyAll(
-                  AppColors.primaryDark,
-                ),
-                dataRowMinHeight: 54,
-                dataRowMaxHeight: 58,
-                columnSpacing: 18,
-                horizontalMargin: 12,
-                headingTextStyle: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-                dataTextStyle: const TextStyle(
-                  color: AppColors.onSurface,
-                  fontSize: 13,
-                ),
-                columns: const [
-                  DataColumn(label: Text('NO.')),
-                  DataColumn(label: Text('PHOTO')),
-                  DataColumn(label: Text('ROLL NO.')),
-                  DataColumn(label: Text('FULL NAME + MAJOR')),
-                  DataColumn(label: Text('GENDER')),
-                  DataColumn(label: Text('ATTENDANCE STATUS')),
-                  DataColumn(label: Text('CUMULATIVE ABSENCE')),
-                  DataColumn(label: Text('NOTE / OFFICIAL REASON')),
-                ],
-                rows: _visibleStudents
-                    .asMap()
-                    .entries
-                    .map(
-                      (entry) => _studentRow(context, entry.key, entry.value),
-                    )
-                    .toList(),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _narrowRosterHeader(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-    color: AppColors.surfaceHigh,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.how_to_reg, size: 18, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Active Roster Verification',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-            Text(
-              '${_visibleStudents.length}/${_students.length} shown',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            const StatusChip(label: 'Present', type: StatusChipType.present),
-            const StatusChip(label: 'Absent', type: StatusChipType.absent),
-            StatusChip(
-              label: 'Critical Risk (>=${_percentLabel(_banThreshold)})',
-              type: StatusChipType.warning,
-              showIcon: true,
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
+    );
+  }
 
   Widget _studentCard(
     BuildContext context,
     int index,
     AttendanceStudent student,
+    AttendanceDetailData data,
   ) {
-    final key = student.studentId.isEmpty ? student.rollNo : student.studentId;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -636,10 +588,10 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                 radius: 16,
                 backgroundColor: student.avatarColor.withValues(alpha: 0.18),
                 child: Text(
-                  student.fullName[0],
+                  student.fullName.isNotEmpty ? student.fullName[0] : 'S',
                   style: TextStyle(
                     color: student.avatarColor,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -663,7 +615,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              _absenceChip(student),
+              _absenceChip(student, data),
             ],
           ),
           const SizedBox(height: 10),
@@ -673,11 +625,10 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: TextFormField(
-                  key: ValueKey('note-$key'),
                   initialValue: student.note,
-                  onChanged: (value) => student.note = value,
+                  onChanged: (val) => student.note = val,
                   decoration: const InputDecoration(
-                    hintText: 'Add remarks...',
+                    hintText: 'Thêm ghi chú...',
                     isDense: true,
                   ),
                 ),
@@ -693,122 +644,85 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     BuildContext context,
     int index,
     AttendanceStudent student,
-  ) => DataRow(
-    color: WidgetStatePropertyAll(
-      index.isOdd ? const Color(0xFFF8FAFC) : Colors.white,
-    ),
-    cells: [
-      DataCell(
-        Text(
-          '${index + 1}'.padLeft(2, '0'),
-          style: const TextStyle(color: AppColors.onSurfaceVariant),
+    AttendanceDetailData data,
+  ) =>
+      DataRow(
+        color: WidgetStatePropertyAll(
+          index.isOdd ? const Color(0xFFF8FAFC) : Colors.white,
         ),
-      ),
-      DataCell(
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: student.avatarColor.withValues(alpha: 0.18),
-          child: Text(
-            student.fullName[0],
-            style: TextStyle(
-              color: student.avatarColor,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ),
-      DataCell(
-        Text(
-          student.rollNo,
-          style: const TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      DataCell(
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              student.fullName,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            Text(
-              student.major,
-              style: const TextStyle(
-                color: AppColors.onSurfaceVariant,
-                fontSize: 11,
+        cells: [
+          DataCell(Text('${index + 1}'.padLeft(2, '0'))),
+          DataCell(
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: student.avatarColor.withValues(alpha: 0.18),
+              child: Text(
+                student.fullName.isNotEmpty ? student.fullName[0] : 'S',
+                style: TextStyle(
+                  color: student.avatarColor,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ],
-        ),
-      ),
-      DataCell(
-        Text(
-          student.gender,
-          style: const TextStyle(color: AppColors.onSurfaceVariant),
-        ),
-      ),
-      DataCell(_statusToggle(student)),
-      DataCell(_absenceChip(student)),
-      DataCell(
-        SizedBox(
-          width: 220,
-          child: TextFormField(
-            initialValue: student.note,
-            onChanged: (value) => student.note = value,
-            decoration: const InputDecoration(hintText: 'Add remarks...'),
           ),
-        ),
-      ),
-    ],
-  );
+          DataCell(
+            Text(
+              student.rollNo,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          DataCell(
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  student.fullName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  student.major,
+                  style: const TextStyle(
+                    color: AppColors.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          DataCell(Text(student.gender)),
+          DataCell(_statusToggle(student)),
+          DataCell(_absenceChip(student, data)),
+          DataCell(
+            SizedBox(
+              width: 220,
+              child: TextFormField(
+                initialValue: student.note,
+                onChanged: (val) => student.note = val,
+                decoration: const InputDecoration(hintText: 'Thêm ghi chú...'),
+              ),
+            ),
+          ),
+        ],
+      );
 
   Widget _statusToggle(AttendanceStudent student) => Container(
-    padding: const EdgeInsets.all(3),
-    decoration: BoxDecoration(
-      color: AppColors.surfaceContainer,
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _statusButton(student, AttendanceState.present, 'Present'),
-        _statusButton(student, AttendanceState.absent, 'Absent'),
-      ],
-    ),
-  );
-
-  // Same thresholds as Settings / Reports / AI Assistant, so a student's
-  // risk colour is identical on every page.
-  double get _warnThreshold =>
-      widget.stats?.warnThreshold ?? AttendanceStatsService.defaultWarnThreshold;
-  double get _banThreshold =>
-      widget.stats?.banThreshold ?? AttendanceStatsService.defaultBanThreshold;
-
-  String _percentLabel(double value) {
-    final percent = value * 100;
-    return percent == percent.roundToDouble()
-        ? '${percent.toStringAsFixed(0)}%'
-        : '${percent.toStringAsFixed(1)}%';
-  }
-
-  Widget _absenceChip(AttendanceStudent student) {
-    final rate = student.absenceRate;
-    final banned = rate >= _banThreshold;
-    return StatusChip(
-      label:
-          '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(rate * 100).toStringAsFixed(1)}%)',
-      type: banned
-          ? StatusChipType.absent
-          : rate >= _warnThreshold
-          ? StatusChipType.warning
-          : StatusChipType.neutral,
-      showIcon: banned,
-    );
-  }
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainer,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _statusButton(student, AttendanceState.present, 'Có mặt'),
+            _statusButton(student, AttendanceState.absent, 'Vắng'),
+          ],
+        ),
+      );
 
   Widget _statusButton(
     AttendanceStudent student,
@@ -817,19 +731,19 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
   ) {
     final selected = student.status == status;
     final isPresent = status == AttendanceState.present;
+
     return Semantics(
       button: true,
       selected: selected,
-      label: 'Mark ${student.fullName} as $label',
+      label: 'Đánh dấu ${student.fullName} là $label',
       excludeSemantics: true,
       child: InkWell(
-        onTap: () => setState(() => student.status = status),
+        onTap: () => widget.viewModel.markStudent(student, status),
         borderRadius: BorderRadius.circular(4),
         child: Container(
-          // Minimum 48dp touch target (Material / WCAG 2.5.5).
-          constraints: const BoxConstraints(minHeight: 48, minWidth: 72),
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 64),
           alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: selected
                 ? (isPresent ? AppColors.primary : AppColors.error)
@@ -839,7 +753,6 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon + text so the state is not conveyed by colour alone.
               if (selected) ...[
                 Icon(
                   isPresent ? Icons.check : Icons.close,
@@ -863,30 +776,65 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     );
   }
 
-  Widget _autosaveBar(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Icon(
-            _submitted ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-            color: _submitted ? AppColors.primary : AppColors.onSurfaceVariant,
-            size: 16,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              _submitted
-                  ? 'Attendance submitted for this session.'
-                  : 'Not submitted yet. Use Save Draft or Submit to keep your changes.',
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: AppColors.onSurfaceVariant),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
+  Widget _absenceChip(AttendanceStudent student, AttendanceDetailData data) {
+    final rate = student.absenceRate;
+    final banned = rate >= data.banThreshold;
+    final warning = rate >= data.warnThreshold;
 
-  void _showMessage(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
+    return StatusChip(
+      label:
+          '${student.cumulativeAbsences}/${student.cumulativeSessions} (${(rate * 100).toStringAsFixed(1)}%)',
+      type: banned
+          ? StatusChipType.absent
+          : warning
+              ? StatusChipType.warning
+              : StatusChipType.neutral,
+      showIcon: banned,
+    );
+  }
+
+  Widget _autosaveBar(BuildContext context) {
+    final isSubmitted = widget.viewModel.isSubmitted;
+    final hasBackup = widget.viewModel.hasOfflineBackup;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(
+              isSubmitted
+                  ? Icons.cloud_done_outlined
+                  : (hasBackup ? Icons.save_as_outlined : Icons.cloud_off_outlined),
+              color: isSubmitted ? AppColors.green : AppColors.onSurfaceVariant,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isSubmitted
+                    ? 'Ca học đã hoàn tất điểm danh và nộp chính thức.'
+                    : (hasBackup
+                        ? 'Đã phát hiện bản sao lưu nháp cục bộ trong bộ nhớ máy.'
+                        : 'Chưa chốt nộp. Bạn có thể bấm "Lưu nháp" hoặc "Nộp điểm danh".'),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMessage(String msg, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isError ? AppColors.error : AppColors.primary,
+      ),
+    );
+  }
 }

@@ -1,51 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
 import '../theme/app_theme.dart';
 
 class NavBar extends StatelessWidget {
   const NavBar({super.key});
 
   static const items = [
-    ('Home', '/home', Icons.home_outlined),
-    ('My Classes', '/my-classes', Icons.class_outlined),
-    ('Timetable', '/timetable', Icons.calendar_month_outlined),
-    ('Export', '/fap-sync', Icons.sync_outlined),
-    ('AI Assistant', '/ai-assistant', Icons.auto_awesome_outlined),
-    ('Take Attendance', '/take-attendance', Icons.how_to_reg_outlined),
-    ('Reports', '/reports', Icons.assessment_outlined),
-    ('Settings', '/settings', Icons.settings_outlined),
+    ('Trang chủ', '/home', Icons.home_outlined),
+    ('Lớp học', '/my-classes', Icons.class_outlined),
+    ('Lịch dạy', '/timetable', Icons.calendar_month_outlined),
+    ('Điểm danh', '/take-attendance', Icons.how_to_reg_outlined),
+    ('Báo cáo', '/reports', Icons.assessment_outlined),
+    ('Đồng bộ FAP', '/fap-sync', Icons.sync_outlined),
+    ('Trợ lý AI', '/ai-assistant', Icons.auto_awesome_outlined),
+    ('Hồ sơ', '/profile', Icons.person_outline),
+    ('Cài đặt', '/settings', Icons.settings_outlined),
   ];
 
   @override
   Widget build(BuildContext context) {
-
-
     final currentPath = GoRouterState.of(context).uri.path;
+
     return Container(
       height: 48,
       color: AppColors.primary,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: items.map((item) {
-          final selected =
-              currentPath == item.$2 ||
-              (item.$1 == 'Take Attendance' &&
+          final selected = currentPath == item.$2 ||
+              (item.$2 == '/take-attendance' &&
                   currentPath.startsWith('/attendance/'));
+
           return Padding(
             padding: const EdgeInsets.only(right: 4),
             child: TextButton(
               onPressed: () => context.go(item.$2),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
-                backgroundColor: selected
-                    ? AppColors.primaryDark
-                    : Colors.transparent,
+                backgroundColor:
+                    selected ? AppColors.primaryDark : Colors.transparent,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: 10,
                   vertical: 9,
                 ),
               ),
@@ -70,37 +68,35 @@ class MobileNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentPath = GoRouterState.of(context).uri.path;
-    var selectedIndex = NavBar.items.indexWhere(
-      (item) =>
-          currentPath == item.$2 ||
-          (item.$1 == 'Take Attendance' &&
+
+    // 4 primary destinations on mobile: Home, Classes, Attendance, Reports
+    const primaryIndices = [0, 1, 3, 4];
+    final selectedIndex = primaryIndices.indexWhere(
+      (idx) =>
+          currentPath == NavBar.items[idx].$2 ||
+          (NavBar.items[idx].$2 == '/take-attendance' &&
               currentPath.startsWith('/attendance/')),
     );
-    if (selectedIndex < 0) selectedIndex = 0;
 
-    // Four primary destinations keep the mobile bar usable; the full list
-    // remains available from the More destination.
-    const primaryItems = [0, 1, 2, 5];
-    final primaryIndex = primaryItems.indexOf(selectedIndex);
     return NavigationBar(
-      selectedIndex: primaryIndex >= 0 ? primaryIndex : 4,
+      selectedIndex: selectedIndex >= 0 ? selectedIndex : 4,
       onDestinationSelected: (index) {
         if (index == 4) {
           _showMoreMenu(context);
           return;
         }
-        context.go(NavBar.items[primaryItems[index]].$2);
+        context.go(NavBar.items[primaryIndices[index]].$2);
       },
       destinations: [
-        for (final index in primaryItems.take(4))
+        for (final idx in primaryIndices)
           NavigationDestination(
-            icon: Icon(NavBar.items[index].$3),
-            // "Take Attendance" wraps onto two lines in a five-item bar.
-            label: NavBar.items[index].$1 == 'Take Attendance'
-                ? 'Attendance'
-                : NavBar.items[index].$1,
+            icon: Icon(NavBar.items[idx].$3),
+            label: NavBar.items[idx].$1,
           ),
-        const NavigationDestination(icon: Icon(Icons.menu), label: 'More'),
+        const NavigationDestination(
+          icon: Icon(Icons.more_horiz),
+          label: 'Thêm',
+        ),
       ],
     );
   }
@@ -113,13 +109,17 @@ class MobileNavBar extends StatelessWidget {
         child: ListView(
           shrinkWrap: true,
           children: [
-            for (final index in [3, 4, 6, 7])
+            // Extra routes in bottom sheet: Timetable, Export, AI Assistant, Profile, Settings
+            for (final idx in [2, 5, 6, 7, 8])
               ListTile(
-                leading: Icon(NavBar.items[index].$3),
-                title: Text(NavBar.items[index].$1),
+                leading: Icon(NavBar.items[idx].$3, color: AppColors.primary),
+                title: Text(
+                  NavBar.items[idx].$1,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 onTap: () {
                   Navigator.pop(context);
-                  GoRouter.of(context).go(NavBar.items[index].$2);
+                  GoRouter.of(context).go(NavBar.items[idx].$2);
                 },
               ),
           ],

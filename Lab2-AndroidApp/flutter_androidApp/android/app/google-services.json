@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "557473673496",
+    "project_id": "fap-attendance-85250",
+    "storage_bucket": "fap-attendance-85250.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:557473673496:android:072e1000906bd0fad62e6d",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCODef8p-T_c43zpktjoN4BFBpNC7C0tjo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

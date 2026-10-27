@@ -10,7 +10,7 @@ void main() {
     await tester.pumpWidget(const AttendanceApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Sign in with Google'), findsOneWidget);
+    expect(find.textContaining('Sign in with Google'), findsOneWidget);
 
     // Reset surface size after test
     addTearDown(tester.view.resetPhysicalSize);

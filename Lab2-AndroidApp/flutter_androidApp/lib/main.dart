@@ -2,21 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/di/service_locator.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/app_shell.dart';
+import 'features/ai_assistant/ai_assistant_page.dart';
 import 'features/attendance/attendance_browse_page.dart';
 import 'features/attendance/attendance_detail_page.dart';
-import 'features/attendance/data/attendance_repository.dart';
-import 'features/settings/settings_page.dart';
-import 'features/reports/reports_page.dart';
-import 'features/home/home_page.dart';
-import 'features/classes/my_classes_page.dart';
-import 'features/timetable/timetable_page.dart';
-import 'features/export/export_page.dart';
-import 'features/ai_assistant/ai_assistant_page.dart';
-import 'services/attendance_stats_service.dart';
-import 'services/google_sheet_service.dart';
 import 'features/auth/login_page.dart';
+import 'features/classes/my_classes_page.dart';
+import 'features/export/export_page.dart';
+import 'features/home/home_page.dart';
+import 'features/profile/profile_page.dart';
+import 'features/reports/reports_page.dart';
+import 'features/settings/settings_page.dart';
+import 'features/timetable/timetable_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +24,11 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('Could not load .env file: $e');
   }
+
+  // Pre-initialize Firebase & Remote Config services
+  await ServiceLocator.instance.remoteConfigService.initialize();
+  await ServiceLocator.instance.messagingService.initialize();
+
   runApp(const AttendanceApp());
 }
 
@@ -33,16 +37,15 @@ class AttendanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sheetService = GoogleSheetService();
-    final repository = GoogleSheetsAttendanceRepository(sheetService);
-    final stats = AttendanceStatsService(sheetService);
+    final locator = ServiceLocator.instance;
+
     final router = GoRouter(
       initialLocation: '/login',
       routes: [
         GoRoute(
           path: '/login',
           builder: (context, state) => LoginPage(
-            service: sheetService,
+            viewModel: locator.createAuthViewModel(),
             loggedOut: state.uri.queryParameters['logout'] == '1',
           ),
         ),
@@ -50,25 +53,35 @@ class AttendanceApp extends StatelessWidget {
           builder: (context, state, child) => AppShell(child: child),
           routes: [
             GoRoute(
-              path: '/take-attendance',
-              builder: (context, state) => AttendanceBrowsePage(
-                repository: repository,
-                onSessionSelected: (session) =>
-                    context.go('/attendance/${session.id}'),
-              ),
-            ),
-            GoRoute(
               path: '/home',
               builder: (context, state) => HomePage(
-                stats: stats,
+                viewModel: locator.createHomeViewModel(),
                 onSessionSelected: (sessionId) =>
                     context.go('/attendance/$sessionId'),
               ),
             ),
             GoRoute(
+              path: '/take-attendance',
+              builder: (context, state) => AttendanceBrowsePage(
+                viewModel: locator.createAttendanceBrowseViewModel(),
+                onSessionSelected: (session) =>
+                    context.go('/attendance/${session.id}'),
+              ),
+            ),
+            GoRoute(
+              path: '/attendance/:sessionId',
+              builder: (context, state) {
+                final sessionId = state.pathParameters['sessionId']!;
+                return AttendanceDetailPage(
+                  viewModel: locator.createAttendanceDetailViewModel(sessionId),
+                  onAttendanceSaved: () => locator.statsService.load(force: true),
+                );
+              },
+            ),
+            GoRoute(
               path: '/my-classes',
               builder: (context, state) => MyClassesPage(
-                stats: stats,
+                viewModel: locator.createMyClassesViewModel(),
                 onSessionSelected: (sessionId) =>
                     context.go('/attendance/$sessionId'),
               ),
@@ -76,42 +89,48 @@ class AttendanceApp extends StatelessWidget {
             GoRoute(
               path: '/timetable',
               builder: (context, state) => TimetablePage(
-                stats: stats,
+                viewModel: locator.createTimetableViewModel(),
                 onSessionSelected: (sessionId) =>
                     context.go('/attendance/$sessionId'),
               ),
             ),
             GoRoute(
+              path: '/reports',
+              builder: (context, state) => ReportsPage(
+                viewModel: locator.createReportsViewModel(),
+              ),
+            ),
+            GoRoute(
               path: '/fap-sync',
-              builder: (context, state) => ExportPage(stats: stats),
+              builder: (context, state) => ExportPage(
+                viewModel: locator.createExportViewModel(),
+              ),
             ),
             GoRoute(
               path: '/ai-assistant',
-              builder: (context, state) => AiAssistantPage(stats: stats),
+              builder: (context, state) => AiAssistantPage(
+                viewModel: locator.createAiAssistantViewModel(),
+              ),
             ),
             GoRoute(
-              path: '/attendance/:sessionId',
-              builder: (context, state) => AttendanceDetailPage(
-                sessionId: state.pathParameters['sessionId']!,
-                repository: repository,
-stats: stats,
-                onAttendanceSaved: () => stats.load(force: true),
+              path: '/profile',
+              builder: (context, state) => ProfilePage(
+                viewModel: locator.createProfileViewModel(),
               ),
             ),
             GoRoute(
               path: '/settings',
-              builder: (context, state) => SettingsPage(stats: stats),
-            ),
-            GoRoute(
-              path: '/reports',
-              builder: (context, state) => ReportsPage(stats: stats),
+              builder: (context, state) => SettingsPage(
+                viewModel: locator.createSettingsViewModel(),
+              ),
             ),
           ],
         ),
       ],
     );
+
     return MaterialApp.router(
-      title: 'Academic Portal - Attendance',
+      title: 'AttendEase - FPT Academic Attendance',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       themeMode: ThemeMode.light,

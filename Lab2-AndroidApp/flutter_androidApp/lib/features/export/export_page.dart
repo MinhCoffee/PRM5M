@@ -1,38 +1,28 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/state_view.dart';
 import '../../core/widgets/status_chip.dart';
-import '../../models/student.dart';
-import '../../services/attendance_stats_service.dart';
-import '../../services/file_service.dart';
 import '../../services/google_sheet_service.dart';
+import 'viewmodel/export_viewmodel.dart';
 
 class ExportPage extends StatefulWidget {
-  final AttendanceStatsService stats;
+  final ExportViewModel viewModel;
 
-  const ExportPage({super.key, required this.stats});
+  const ExportPage({super.key, required this.viewModel});
 
   @override
   State<ExportPage> createState() => _ExportPageState();
 }
 
 class _ExportPageState extends State<ExportPage> {
-  final _fileService = FileService();
   final _importClassController = TextEditingController();
-  late Future<void> _loadFuture;
-  String _classCode = 'all';
-  DateTime? _from;
-  DateTime? _to;
-  bool _exporting = false;
-  bool _importing = false;
 
   @override
   void initState() {
     super.initState();
-    _loadFuture = widget.stats.load(force: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.viewModel.loadExportData();
+    });
   }
 
   @override
@@ -41,346 +31,358 @@ class _ExportPageState extends State<ExportPage> {
     super.dispose();
   }
 
-  List<SheetScheduleRow> get _sessions => widget.stats.sessions.where((session) {
-        final date = DateTime.tryParse(session.sessionDate);
-        final classMatches = _classCode == 'all' || session.classCode == _classCode;
-        final fromMatches = _from == null || (date != null && !date.isBefore(_from!));
-        final toMatches = _to == null || (date != null && !date.isAfter(_to!));
-        return classMatches && fromMatches && toMatches;
-      }).toList()
-    ..sort((a, b) => a.sessionDate.compareTo(b.sessionDate));
-
-  Future<void> _pickDate(bool from) async {
+  Future<void> _pickDate(bool isFrom) async {
+    final currentData = widget.viewModel.state.data;
     final selected = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      initialDate: from ? (_from ?? DateTime.now()) : (_to ?? DateTime.now()),
+      initialDate: isFrom
+          ? (currentData?.fromDate ?? DateTime.now())
+          : (currentData?.toDate ?? DateTime.now()),
     );
-    if (selected != null) setState(() => from ? _from = selected : _to = selected);
-  }
-
-  Future<void> _exportCsv() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final sessionIds = _sessions.map((session) => session.sessionId).toSet();
-      final relevantAttendance = widget.stats.attendance.where((row) => sessionIds.contains(row.sessionId)).toList();
-
-      if (relevantAttendance.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No attendance records found for the selected filter.')),
-        );
-        return;
+    if (selected != null) {
+      if (isFrom) {
+        widget.viewModel.setDateRange(selected, currentData?.toDate);
+      } else {
+        widget.viewModel.setDateRange(currentData?.fromDate, selected);
       }
-
-      final rows = <String>[
-        'class_code,subject_code,session_no,session_date,slot,roll_number,full_name,status,note',
-      ];
-
-      for (final attendance in relevantAttendance) {
-        final session = _sessions.firstWhere((item) => item.sessionId == attendance.sessionId);
-        final student = widget.stats.students.firstWhere(
-          (item) => item.studentId == attendance.studentId || item.studentCode == attendance.studentId,
-          orElse: () => Student(
-            studentId: attendance.studentId,
-            studentName: 'Unknown student',
-            classId: session.classCode,
-            email: '',
-          ),
-        );
-        final rollNo = student.studentCode.isNotEmpty ? student.studentCode : student.studentId;
-        rows.add([
-          session.classCode,
-          session.subjectCode,
-          session.sessionNo.toString(),
-          session.sessionDate,
-          session.slot,
-          rollNo,
-          student.fullName,
-          attendance.status,
-          attendance.note,
-        ].map(_csv).join(','));
-      }
-
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final classLabel = _classCode == 'all' ? 'AllClasses' : _classCode;
-      final defaultFileName = 'FAP_Attendance_${classLabel}_$timestamp.csv';
-
-      final savePath = await _fileService.saveTextFile(
-        dialogTitle: 'Save FAP Attendance CSV',
-        fileName: defaultFileName,
-        content: '${rows.join('\n')}\n',
-        extensions: ['csv'],
-      );
-      if (savePath == null) return;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Exported ${rows.length - 1} records for [ $classLabel ] to $savePath'),
-          action: Platform.isWindows
-              ? SnackBarAction(
-                  label: 'Open Folder',
-                  onPressed: () => Process.run('explorer.exe', ['/select,', savePath]),
-                )
-              : null,
-          duration: const Duration(seconds: 10),
-        ));
-      }
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $error')));
-    } finally {
-      if (mounted) setState(() => _exporting = false);
     }
   }
 
-  Future<void> _importStudents({required bool excel}) async {
-    if (_importing) return;
-    final fallbackClass = (_importClassController.text.trim().isNotEmpty
-            ? _importClassController.text
-            : (_classCode == 'all' ? '' : _classCode))
-        .trim()
-        .toUpperCase();
-    if (fallbackClass.isEmpty) {
+  Future<void> _handleExport() async {
+    final path = await widget.viewModel.exportFapCsv();
+    if (!mounted) return;
+
+    if (path != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a fallback class code before importing.')),
+        SnackBar(
+          content: Text('Xuất CSV thành công & đã đồng bộ đám mây: $path'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+    } else if (widget.viewModel.operationMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.operationMessage!),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleImport({required bool isExcel}) async {
+    final fallback = _importClassController.text.trim().toUpperCase();
+    if (fallback.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập mã lớp mặc định trước khi tải tệp lên.'),
+        ),
       );
       return;
     }
 
-    setState(() => _importing = true);
-    try {
-      final students = excel
-          ? await _fileService.importStudentsFromExcel(fallbackClass)
-          : await _fileService.importStudentsFromCsv(fallbackClass);
-      if (students.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No students were imported.')));
-        return;
-      }
-      final added = await widget.stats.sheetService.appendStudents(students);
-      await widget.stats.load(force: true);
-      if (!mounted) return;
-      final importedClasses = students
-          .map((student) => student.classId.trim().toUpperCase())
-          .where((value) => value.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      final selectedClass = importedClasses.contains(fallbackClass) ? fallbackClass : importedClasses.first;
-      setState(() {
-        _classCode = selectedClass;
-        _importClassController.text = selectedClass;
-      });
-      final skipped = students.length - added;
+    final added = await widget.viewModel.importStudents(
+      isExcel: isExcel,
+      fallbackClass: fallback,
+    );
+    if (!mounted) return;
+
+    if (added > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $added new students. Skipped $skipped duplicate rows.')),
+        SnackBar(
+          content: Text('Đã nhập thành công $added sinh viên vào hệ thống!'),
+          backgroundColor: AppColors.green,
+        ),
       );
-    } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $error')));
-    } finally {
-      if (mounted) setState(() => _importing = false);
+    } else if (widget.viewModel.operationMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.viewModel.operationMessage!),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
-  String _csv(Object value) => '"${value.toString().replaceAll('"', '""')}"';
-
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _loadFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError) return Center(child: Text('Could not load export data: ${snapshot.error}'));
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) {
+        final state = widget.viewModel.state;
 
-        final classes = [
-          'all',
-          ...{
-            ...widget.stats.students.map((student) => student.classId),
-            ...widget.stats.sessions.map((session) => session.classCode),
-          }.where((value) => value.isNotEmpty).toList()
-            ..sort(),
-        ];
+        return StateView<ExportData>(
+          state: state,
+          loadingMessage: 'Đang tải danh sách ca học để xuất FAP...',
+          onRetry: () => widget.viewModel.loadExportData(force: true),
+          emptyTitle: 'Không có ca học nào thỏa mãn',
+          emptyMessage: state.errorMessage ??
+              'Không tìm thấy ca học nào phù hợp với lớp và khoảng thời gian đã chọn.',
+          emptyActionLabel: 'Đặt lại bộ lọc',
+          onEmptyAction: () => widget.viewModel.resetFilters(),
+          onData: (context, data) => _buildContent(context, data),
+        );
+      },
+    );
+  }
 
-        final narrow = MediaQuery.sizeOf(context).width < 700;
-        final titleBlock = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Export & FAP Sync', style: Theme.of(context).textTheme.headlineLarge),
-          const SizedBox(height: 4),
-          Text(
-            'Select class and date range to export official FAP attendance records or import class roster from CSV/Excel.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ]);
-        final refreshButton = IconButton.filledTonal(
-          tooltip: 'Refresh data from Google Sheets',
-          icon: const Icon(Icons.refresh),
-          onPressed: () => setState(() => _loadFuture = widget.stats.load(force: true)),
-        );
-        final exportButton = FilledButton.icon(
-          onPressed: _exporting ? null : _exportCsv,
-          icon: const Icon(Icons.download_outlined),
-          label: Text(_exporting ? 'Exporting...' : (_classCode == 'all' ? 'Export CSV (All Classes)' : 'Export CSV ($_classCode)')),
-        );
-        return ListView(padding: EdgeInsets.all(narrow ? 16 : 24), children: [
-          // On a phone the title would be squeezed between the buttons, so stack them.
-          if (narrow) ...[
-            titleBlock,
-            const SizedBox(height: 12),
-            Row(children: [refreshButton, const SizedBox(width: 8), Expanded(child: exportButton)]),
-          ] else
-            Row(children: [
-              Expanded(child: titleBlock),
-              refreshButton,
-              const SizedBox(width: 8),
-              exportButton,
-            ]),
-          const SizedBox(height: 18),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+  Widget _buildContent(BuildContext context, ExportData data) {
+    final narrow = MediaQuery.sizeOf(context).width < 700;
+    final isExporting = widget.viewModel.isExporting;
+    final isImporting = widget.viewModel.isImporting;
+
+    return ListView(
+      padding: EdgeInsets.all(narrow ? 16 : 24),
+      children: [
+        // Title Header
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Đồng bộ FAP & Xuất dữ liệu',
+                      style: Theme.of(context).textTheme.headlineLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Xuất tệp CSV điểm danh chuẩn FAP hoặc nhập danh sách lớp từ Excel/CSV.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: isExporting ? null : _handleExport,
+              icon: isExporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.download_outlined),
+              label: Text(
+                isExporting
+                    ? 'Đang xuất...'
+                    : (data.selectedClass == 'all'
+                        ? 'Xuất CSV (Tất cả lớp)'
+                        : 'Xuất CSV (${data.selectedClass})'),
+              ),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // Filter Bar
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
                 SizedBox(
                   width: narrow ? double.infinity : 200,
                   child: DropdownButtonFormField<String>(
                     isExpanded: true,
-                    initialValue: _classCode,
-                    decoration: const InputDecoration(labelText: 'Target Class', isDense: true),
-                    items: classes
-                        .map((value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value == 'all' ? '🏫 All classes' : '📘 Class $value'),
+                    initialValue: data.selectedClass,
+                    decoration: const InputDecoration(
+                      labelText: 'Lớp học mục tiêu',
+                      isDense: true,
+                    ),
+                    items: data.classes
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c == 'all' ? '🏫 Tất cả các lớp' : '📘 Lớp $c'),
                             ))
                         .toList(),
-                    onChanged: (value) => setState(() => _classCode = value ?? 'all'),
+                    onChanged: (val) =>
+                        widget.viewModel.setClassCode(val ?? 'all'),
                   ),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _pickDate(true),
                   icon: const Icon(Icons.date_range),
-                  label: Text(_from == null ? 'From date' : _dateText(_from!)),
+                  label: Text(data.fromDate == null
+                      ? 'Từ ngày'
+                      : _formatDate(data.fromDate!)),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _pickDate(false),
                   icon: const Icon(Icons.date_range),
-                  label: Text(_to == null ? 'To date' : _dateText(_to!)),
+                  label: Text(data.toDate == null
+                      ? 'Đến ngày'
+                      : _formatDate(data.toDate!)),
                 ),
                 TextButton.icon(
-                  onPressed: () => setState(() {
-                    _from = null;
-                    _to = null;
-                    _classCode = 'all';
-                  }),
+                  onPressed: () => widget.viewModel.resetFilters(),
                   icon: const Icon(Icons.clear_all, size: 16),
-                  label: const Text('Reset filters'),
+                  label: const Text('Xóa bộ lọc'),
                 ),
-              ]),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        ),
+        const SizedBox(height: 14),
+
+        // Import Box
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
                 SizedBox(
                   width: narrow ? double.infinity : 200,
                   child: TextField(
                     controller: _importClassController,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
-                      labelText: 'Fallback class code',
-                      hintText: 'SE1804',
+                      labelText: 'Mã lớp bổ sung (Fallback)',
+                      hintText: 'SE1801',
                       isDense: true,
                     ),
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _importing ? null : () => _importStudents(excel: false),
+                  onPressed: isImporting ? null : () => _handleImport(isExcel: false),
                   icon: const Icon(Icons.upload_file),
-                  label: Text(_importing ? 'Importing...' : 'Import Students (CSV)'),
+                  label: Text(isImporting ? 'Đang nhập...' : 'Nhập SV từ CSV'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _importing ? null : () => _importStudents(excel: true),
+                  onPressed: isImporting ? null : () => _handleImport(isExcel: true),
                   icon: const Icon(Icons.table_view),
-                  label: Text(_importing ? 'Importing...' : 'Import Students (Excel)'),
+                  label: Text(isImporting ? 'Đang nhập...' : 'Nhập SV từ Excel (.xlsx)'),
                 ),
-              ]),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          // Six columns do not fit on a phone, so list one card per session there.
-          if (narrow)
-            ..._sessions.map((session) => Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${session.classCode}  ·  ${session.subjectCode}', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary)),
-                          const SizedBox(height: 2),
-                          Text(session.subjectName),
-                          Text('Session ${session.sessionNo} / ${session.totalSessions}  ·  ${session.sessionDate}  ·  ${session.slot}', style: Theme.of(context).textTheme.bodySmall),
-                        ]),
-                      ),
-                      const SizedBox(width: 8),
-                      _statusBadge(_syncStatus(session.sessionId)),
-                    ]),
-                  ),
-                ))
-          else Card(
+        ),
+        const SizedBox(height: 16),
+
+        // Session list / table
+        if (narrow)
+          ...data.sessions.map((s) => _sessionCard(context, s))
+        else
+          Card(
             clipBehavior: Clip.antiAlias,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowColor: const WidgetStatePropertyAll(AppColors.primaryDark),
-                headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                headingRowColor:
+                    const WidgetStatePropertyAll(AppColors.primaryDark),
+                headingTextStyle: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
                 columns: const [
-                  DataColumn(label: Text('CLASS')),
-                  DataColumn(label: Text('SUBJECT')),
-                  DataColumn(label: Text('SESSION NO.')),
-                  DataColumn(label: Text('DATE')),
-                  DataColumn(label: Text('SLOT')),
-                  DataColumn(label: Text('SYNC STATUS')),
+                  DataColumn(label: Text('LỚP')),
+                  DataColumn(label: Text('MÔN HỌC')),
+                  DataColumn(label: Text('BUỔI SỐ')),
+                  DataColumn(label: Text('NGÀY HỌC')),
+                  DataColumn(label: Text('CA HỌC')),
+                  DataColumn(label: Text('TRẠNG THÁI ĐỒNG BỘ')),
                 ],
-                rows: _sessions.map((session) {
-                  final status = _syncStatus(session.sessionId);
-                  return DataRow(cells: [
-                    DataCell(Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4),
+                rows: data.sessions.map((s) {
+                  final status = widget.viewModel.syncStatus(s.sessionId);
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            s.classCode,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
                       ),
-                      child: Text(session.classCode, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary)),
-                    )),
-                    DataCell(Text('${session.subjectCode} - ${session.subjectName}')),
-                    DataCell(Text('Session ${session.sessionNo} / ${session.totalSessions}')),
-                    DataCell(Text(session.sessionDate)),
-                    DataCell(Text(session.slot)),
-                    DataCell(_statusBadge(status)),
-                  ]);
+                      DataCell(Text('${s.subjectCode} - ${s.subjectName}')),
+                      DataCell(Text('Buổi ${s.sessionNo}/${s.totalSessions}')),
+                      DataCell(Text(s.sessionDate)),
+                      DataCell(Text(s.slot)),
+                      DataCell(_statusBadge(status)),
+                    ],
+                  );
                 }).toList(),
               ),
             ),
           ),
-        ]);
-      },
+      ],
+    );
+  }
+
+  Widget _sessionCard(BuildContext context, SheetScheduleRow session) {
+    final status = widget.viewModel.syncStatus(session.sessionId);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${session.classCode}  ·  ${session.subjectCode}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(session.subjectName),
+                  Text(
+                    'Buổi ${session.sessionNo}/${session.totalSessions}  ·  ${session.sessionDate}  ·  ${session.slot}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _statusBadge(status),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _statusBadge(String status) {
     return switch (status) {
-      'submitted' => const StatusChip(label: 'Submitted', type: StatusChipType.present),
-      'draft' => const StatusChip(label: 'Draft', type: StatusChipType.warning),
-      _ => const StatusChip(label: 'Not Taken', type: StatusChipType.neutral),
+      'submitted' => const StatusChip(
+          label: 'Đã nộp',
+          type: StatusChipType.present,
+        ),
+      'draft' => const StatusChip(
+          label: 'Bản nháp',
+          type: StatusChipType.warning,
+        ),
+      _ => const StatusChip(
+          label: 'Chưa điểm danh',
+          type: StatusChipType.neutral,
+        ),
     };
   }
 
-  String _syncStatus(String sessionId) {
-    final statuses = widget.stats.attendance.where((row) => row.sessionId == sessionId).map((row) => row.syncStatus).toSet();
-    if (statuses.isEmpty) return 'not_taken';
-    if (statuses.contains('draft')) return 'draft';
-    return 'submitted';
-  }
-
-  String _dateText(DateTime date) => '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  String _formatDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
