@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +24,14 @@ Future<void> main() async {
     await dotenv.load(fileName: '.env');
   } catch (e) {
     debugPrint('Could not load .env file: $e');
+  }
+
+  // Initialize Firebase native connection with google-services.json
+  try {
+    await Firebase.initializeApp();
+    debugPrint('Firebase initialized successfully with native config.');
+  } catch (e) {
+    debugPrint('Firebase initialization notice: $e');
   }
 
   // Pre-initialize Firebase & Remote Config services

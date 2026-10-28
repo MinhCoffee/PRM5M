@@ -52,9 +52,9 @@ class FirebaseStorageService implements IStorageService {
     final bytes = utf8.encode(content).length;
     final timestamp = DateTime.now();
     final storagePath = 'reports/$classCode/$fileName';
-    final simulatedStorageBucket = 'gs://prm393-attendease.firebasestorage.app';
+    final simulatedStorageBucket = 'gs://fap-attendance-85250.firebasestorage.app';
     final downloadUrl =
-        'https://firebasestorage.googleapis.com/v0/b/prm393-attendease.firebasestorage.app/o/${Uri.encodeComponent(storagePath)}?alt=media';
+        'https://firebasestorage.googleapis.com/v0/b/fap-attendance-85250.firebasestorage.app/o/${Uri.encodeComponent(storagePath)}?alt=media';
 
     FirebaseEvidenceLogger.log(
       service: 'Cloud Storage',
