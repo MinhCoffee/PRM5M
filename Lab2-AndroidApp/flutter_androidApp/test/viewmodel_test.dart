@@ -43,6 +43,12 @@ class FakeAuthService implements IAuthService {
 
 class FakeAnalyticsService implements IAnalyticsService {
   final List<String> loggedEvents = [];
+  String? currentUserId;
+
+  @override
+  Future<void> setUserId(String? userId) async {
+    currentUserId = userId;
+  }
 
   @override
   Future<void> logAttendanceMarked({
@@ -117,6 +123,11 @@ class FakeCrashlyticsService implements ICrashlyticsService {
 
   @override
   void testCrash() {}
+
+  @override
+  Future<void> sendNonFatalError([String? customMessage]) async {
+    recordedErrors.add(customMessage ?? 'non_fatal_error');
+  }
 }
 
 void main() {

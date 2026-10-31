@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'firebase_evidence_logger.dart';
 
 abstract interface class IAnalyticsService {
+  Future<void> setUserId(String? userId);
   Future<void> logScreenView(String screenName);
   Future<void> logLogin(String method);
   Future<void> logAttendanceMarked({
@@ -40,12 +42,43 @@ class FirebaseAnalyticsService implements IAnalyticsService {
   }
 
   @override
+  Future<void> setUserId(String? userId) async {
+    FirebaseEvidenceLogger.log(
+      service: 'Analytics',
+      action: 'Set User ID: $userId',
+      payload: {'userId': userId ?? 'null'},
+    );
+
+    if (_isFirebaseReady) {
+      try {
+        await FirebaseAnalytics.instance.setUserId(id: userId);
+      } catch (e) {
+        debugPrint('Firebase Analytics setUserId error: $e');
+      }
+    }
+  }
+
+  @override
   Future<void> logScreenView(String screenName) async {
+    if (_isFirebaseReady) {
+      try {
+        await FirebaseAnalytics.instance.logScreenView(screenName: screenName);
+      } catch (e) {
+        debugPrint('Firebase Analytics logScreenView error: $e');
+      }
+    }
     await logEvent('screen_view', {'screen_name': screenName});
   }
 
   @override
   Future<void> logLogin(String method) async {
+    if (_isFirebaseReady) {
+      try {
+        await FirebaseAnalytics.instance.logLogin(loginMethod: method);
+      } catch (e) {
+        debugPrint('Firebase Analytics logLogin error: $e');
+      }
+    }
     await logEvent('login', {'method': method});
   }
 
@@ -111,6 +144,16 @@ class FirebaseAnalyticsService implements IAnalyticsService {
     );
 
     if (_isFirebaseReady) {
+      try {
+        // Log to official Firebase Analytics SDK
+        await FirebaseAnalytics.instance.logEvent(
+          name: name,
+          parameters: parameters,
+        );
+      } catch (e) {
+        debugPrint('Firebase Analytics logEvent error: $e');
+      }
+
       try {
         await FirebaseFirestore.instance.collection('analytics_events').add({
           'eventName': name,

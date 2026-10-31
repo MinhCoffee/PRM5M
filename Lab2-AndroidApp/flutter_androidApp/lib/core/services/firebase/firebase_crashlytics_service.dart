@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'firebase_evidence_logger.dart';
 
@@ -14,6 +15,7 @@ abstract interface class ICrashlyticsService {
   void setCustomKey(String key, Object value);
   void setUserIdentifier(String userId);
   void testCrash();
+  Future<void> sendNonFatalError([String? customMessage]);
 }
 
 class FirebaseCrashlyticsService implements ICrashlyticsService {
@@ -37,6 +39,14 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
       action: 'Breadcrumb logged',
       payload: {'message': message},
     );
+
+    if (_isFirebaseReady) {
+      try {
+        FirebaseCrashlytics.instance.log(message);
+      } catch (e) {
+        debugPrint('Firebase Crashlytics log notice: $e');
+      }
+    }
   }
 
   @override
@@ -47,6 +57,14 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
       action: 'Custom Key set',
       payload: {'key': key, 'value': value.toString()},
     );
+
+    if (_isFirebaseReady) {
+      try {
+        FirebaseCrashlytics.instance.setCustomKey(key, value);
+      } catch (e) {
+        debugPrint('Firebase Crashlytics setCustomKey notice: $e');
+      }
+    }
   }
 
   @override
@@ -57,6 +75,14 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
       action: 'User identifier set',
       payload: {'userId': userId},
     );
+
+    if (_isFirebaseReady) {
+      try {
+        FirebaseCrashlytics.instance.setUserIdentifier(userId);
+      } catch (e) {
+        debugPrint('Firebase Crashlytics setUserIdentifier notice: $e');
+      }
+    }
   }
 
   @override
@@ -87,6 +113,18 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
 
     if (_isFirebaseReady) {
       try {
+        // Record directly into Firebase Crashlytics SDK
+        await FirebaseCrashlytics.instance.recordError(
+          exception,
+          stack,
+          reason: reason,
+          fatal: fatal,
+        );
+      } catch (e) {
+        debugPrint('Firebase Crashlytics recordError error: $e');
+      }
+
+      try {
         await FirebaseFirestore.instance.collection('crashlytics_reports').add({
           'exception': exception.toString(),
           'reason': reason,
@@ -112,11 +150,41 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
       isSuccess: true,
     );
 
+    if (_isFirebaseReady) {
+      try {
+        // Triggers a real simulated crash via Firebase Crashlytics SDK
+        FirebaseCrashlytics.instance.crash();
+        return;
+      } catch (e) {
+        debugPrint('Crashlytics crash invocation note: $e');
+      }
+    }
+
     recordError(
       StateError('Firebase Crashlytics Test Crash verified successfully.'),
       StackTrace.current,
       reason: 'User triggered test crash from Settings/Profile screen',
       fatal: true,
+    );
+  }
+
+  @override
+  Future<void> sendNonFatalError([String? customMessage]) async {
+    FirebaseEvidenceLogger.log(
+      service: 'Crashlytics',
+      action: 'NON_FATAL_TEST_ERROR_TRIGGERED',
+      payload: {
+        'message': customMessage ?? 'Lab 3 non-fatal verification error',
+      },
+      isSuccess: true,
+    );
+
+    final error = Exception(customMessage ?? 'Lab 3: Non-fatal test error recorded for Firebase Console.');
+    await recordError(
+      error,
+      StackTrace.current,
+      reason: 'User triggered non-fatal test error from Settings/Profile screen',
+      fatal: false,
     );
   }
 }

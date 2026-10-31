@@ -305,22 +305,45 @@ class _SettingsPageState extends State<SettingsPage> {
                       'Kích hoạt một sự kiện ngoại lệ thử nghiệm để kiểm tra tính năng ghi nhận lỗi trên Firebase Console Crashlytics.',
                     ),
                     const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        widget.viewModel.triggerTestCrash();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Đã ghi nhận sự kiện Test Crash vào Firebase Crashlytics!',
-                            ),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            widget.viewModel.triggerTestCrash();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Đã ném thử ngoại lệ Fatal Crash vào Firebase Crashlytics!',
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.warning_amber_rounded),
+                          label: const Text('Ném thử lỗi (Test Crash)'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.errorText,
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      label: const Text('Kích hoạt Test Crashlytics Report'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.errorText,
-                      ),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: () async {
+                            await widget.viewModel.triggerTestNonFatalError();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Đã gửi một Non-fatal Error lên Firebase Crashlytics thành công!',
+                                  ),
+                                  backgroundColor: AppColors.primary,
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.report_problem_outlined),
+                          label: const Text('Gửi Non-fatal Error'),
+                        ),
+                      ],
                     ),
                   ],
                 ),

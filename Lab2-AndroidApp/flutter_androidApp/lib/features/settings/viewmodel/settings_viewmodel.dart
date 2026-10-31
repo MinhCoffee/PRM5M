@@ -114,4 +114,10 @@ class SettingsViewModel extends ChangeNotifier {
   void triggerTestCrash() {
     _crashlyticsService.testCrash();
   }
+
+  Future<void> triggerTestNonFatalError() async {
+    await _crashlyticsService.sendNonFatalError(
+      'Lab 3 Non-Fatal Test Error from Settings Page',
+    );
+  }
 }

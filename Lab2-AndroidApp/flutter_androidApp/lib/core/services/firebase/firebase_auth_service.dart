@@ -82,15 +82,27 @@ class FirebaseAuthService implements IAuthService {
       // 2. If Firebase is active, sign in to Firebase Auth with Google OAuth credential
       if (_isFirebaseReady) {
         try {
-          final authorization = await googleUser.authorizationClient.authorizationForScopes([
-            'email',
-            'https://www.googleapis.com/auth/userinfo.profile',
-          ]);
-          final token = authorization?.accessToken;
-          if (token != null) {
+          String? idToken;
+          String? token;
+
+          try {
+            final googleAuth = await googleUser.authentication;
+            idToken = googleAuth.idToken;
+            token = googleAuth.accessToken;
+          } catch (_) {}
+
+          if (token == null) {
+            final authorization = await googleUser.authorizationClient.authorizationForScopes([
+              'email',
+              'https://www.googleapis.com/auth/userinfo.profile',
+            ]);
+            token = authorization?.accessToken;
+          }
+
+          if (token != null || idToken != null) {
             final credential = fb_auth.GoogleAuthProvider.credential(
               accessToken: token,
-              idToken: null,
+              idToken: idToken,
             );
             final userCredential =
                 await fb_auth.FirebaseAuth.instance.signInWithCredential(credential);

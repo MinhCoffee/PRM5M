@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_evidence_logger.dart';
@@ -18,7 +19,12 @@ abstract interface class IRemoteConfigService {
 class FirebaseRemoteConfigService implements IRemoteConfigService {
   static const _prefPrefix = 'remote_config_override_';
 
+  // Default parameters including Lab 3 requirements:
+  // - max_items: 10 (Number)
+  // - show_banner: true (Boolean)
   final Map<String, dynamic> _defaults = {
+    'max_items': 10,
+    'show_banner': true,
     'attendance_warn_threshold': 0.15,
     'attendance_ban_threshold': 0.20,
     'enable_ai_assistant': true,
@@ -41,6 +47,26 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
   Future<void> initialize() async {
     _activeValues.addAll(_defaults);
 
+    if (_isFirebaseReady) {
+      try {
+        final remoteConfig = FirebaseRemoteConfig.instance;
+        await remoteConfig.setConfigSettings(
+          RemoteConfigSettings(
+            fetchTimeout: const Duration(seconds: 10),
+            minimumFetchInterval: Duration.zero, // Instant fetch for test/lab
+          ),
+        );
+        await remoteConfig.setDefaults(_defaults);
+
+        // Populate initial values from Remote Config cache
+        for (final entry in remoteConfig.getAll().entries) {
+          _activeValues[entry.key] = entry.value.asString();
+        }
+      } catch (e) {
+        debugPrint('Firebase Remote Config SDK init notice: $e');
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     for (final key in _defaults.keys) {
       final overrideKey = '$_prefPrefix$key';
@@ -54,7 +80,7 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
     FirebaseEvidenceLogger.log(
       service: 'Remote Config',
-      action: 'Initialized with defaults & local cache',
+      action: 'Initialized with defaults & SDK',
       payload: Map<String, dynamic>.from(_activeValues),
     );
   }
@@ -69,6 +95,18 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
     try {
       if (_isFirebaseReady) {
+        try {
+          final remoteConfig = FirebaseRemoteConfig.instance;
+          final updated = await remoteConfig.fetchAndActivate();
+          if (updated) {
+            for (final entry in remoteConfig.getAll().entries) {
+              _activeValues[entry.key] = entry.value.asString();
+            }
+          }
+        } catch (sdkError) {
+          debugPrint('Remote config SDK fetch notice: $sdkError');
+        }
+
         try {
           final snapshot = await FirebaseFirestore.instance
               .collection('remote_config')
@@ -104,6 +142,12 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
   @override
   double getDouble(String key, double defaultValue) {
+    if (_isFirebaseReady) {
+      try {
+        final val = FirebaseRemoteConfig.instance.getDouble(key);
+        if (val != 0.0) return val;
+      } catch (_) {}
+    }
     final val = _activeValues[key];
     if (val is num) return val.toDouble();
     if (val is String) return double.tryParse(val) ?? defaultValue;
@@ -112,6 +156,11 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
   @override
   bool getBool(String key, bool defaultValue) {
+    if (_isFirebaseReady) {
+      try {
+        return FirebaseRemoteConfig.instance.getBool(key);
+      } catch (_) {}
+    }
     final val = _activeValues[key];
     if (val is bool) return val;
     if (val is String) return val.toLowerCase() == 'true';
@@ -120,6 +169,12 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
   @override
   int getInt(String key, int defaultValue) {
+    if (_isFirebaseReady) {
+      try {
+        final val = FirebaseRemoteConfig.instance.getInt(key);
+        if (val != 0) return val;
+      } catch (_) {}
+    }
     final val = _activeValues[key];
     if (val is int) return val;
     if (val is num) return val.toInt();
@@ -129,6 +184,12 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
   @override
   String getString(String key, String defaultValue) {
+    if (_isFirebaseReady) {
+      try {
+        final val = FirebaseRemoteConfig.instance.getString(key);
+        if (val.isNotEmpty) return val;
+      } catch (_) {}
+    }
     final val = _activeValues[key];
     return val?.toString() ?? defaultValue;
   }

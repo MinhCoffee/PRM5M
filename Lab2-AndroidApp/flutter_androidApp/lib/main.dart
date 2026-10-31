@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
@@ -30,6 +31,22 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp();
     debugPrint('Firebase initialized successfully with native config.');
+    
+    // Pass all uncaught "fatal" errors from the framework to Crashlytics
+    FlutterError.onError = (errorDetails) {
+      FlutterError.presentError(errorDetails);
+      try {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+      } catch (_) {}
+    };
+
+    // Pass all uncaught asynchronous errors to Crashlytics
+    PlatformDispatcher.instance.onError = (error, stack) {
+      try {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      } catch (_) {}
+      return true;
+    };
   } catch (e) {
     debugPrint('Firebase initialization notice: $e');
   }

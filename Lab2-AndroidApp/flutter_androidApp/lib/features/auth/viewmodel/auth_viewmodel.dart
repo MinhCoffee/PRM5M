@@ -78,7 +78,8 @@ class AuthViewModel extends ChangeNotifier {
       final verifiedUser = user ?? UserProfile.defaultLecturer();
       _state = ViewState.data(verifiedUser);
       _analyticsService.logLogin('google_oauth_firebase');
-      _crashlyticsService.setUserIdentifier(verifiedUser.email);
+      _analyticsService.setUserId(verifiedUser.id);
+      _crashlyticsService.setUserIdentifier(verifiedUser.id);
       notifyListeners();
       return true;
     } catch (e, st) {
