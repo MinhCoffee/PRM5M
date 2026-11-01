@@ -198,7 +198,7 @@ class AiAssistantViewModel extends ChangeNotifier {
       'Lịch sử sinh viên ${student.studentCode} - ${student.fullName}: Tổng cộng vắng ${row.absentCount}/${row.sessionsHeld} buổi (${(row.absenceRate * 100).toStringAsFixed(1)}%), trạng thái: ${row.status.value.toUpperCase()}. Chi tiết: $subjectDetail',
     );
 
-    _analyticsService.logEvent('ai_query_student_history', {'studentId': id});
+    _analyticsService.logEvent('ai_query_student_history', {}); // no student id: PII
     _updateDataMessages();
   }
 

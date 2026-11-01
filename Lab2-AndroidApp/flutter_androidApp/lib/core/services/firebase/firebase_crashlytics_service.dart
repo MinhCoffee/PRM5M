@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
@@ -122,19 +121,6 @@ class FirebaseCrashlyticsService implements ICrashlyticsService {
         );
       } catch (e) {
         debugPrint('Firebase Crashlytics recordError error: $e');
-      }
-
-      try {
-        await FirebaseFirestore.instance.collection('crashlytics_reports').add({
-          'exception': exception.toString(),
-          'reason': reason,
-          'fatal': fatal,
-          'userId': _userId,
-          'customKeys': _customKeys,
-          'clientTimestamp': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Crashlytics firestore record notice: $e');
       }
     }
   }

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
@@ -7,33 +6,40 @@ import 'firebase_evidence_logger.dart';
 
 abstract interface class IRemoteConfigService {
   Future<void> initialize();
+
+  /// Fetches the latest template and activates it. Returns true only when a
+  /// fetch succeeded; on failure the in-app defaults / last cached values stay.
   Future<bool> fetchAndActivate();
   double getDouble(String key, double defaultValue);
   bool getBool(String key, bool defaultValue);
   int getInt(String key, int defaultValue);
   String getString(String key, String defaultValue);
   Map<String, dynamic> getAllValues();
+
+  /// A value the *user* chose in Settings. It wins over the remote value and is
+  /// stored on the device only; it is not written to Firebase.
   Future<void> setLocalOverride(String key, dynamic value);
 }
 
 class FirebaseRemoteConfigService implements IRemoteConfigService {
   static const _prefPrefix = 'remote_config_override_';
 
-  // Default parameters including Lab 3 requirements:
-  // - max_items: 10 (Number)
-  // - show_banner: true (Boolean)
-  final Map<String, dynamic> _defaults = {
+  /// Lab 3 parameters that visibly change behaviour on the Home screen:
+  /// - `show_banner` (bool): show/hide the announcement banner
+  /// - `max_items` (int): max number of today's sessions listed
+  /// plus `portal_announcement` (String): the banner text.
+  static const Map<String, dynamic> defaults = {
     'max_items': 10,
     'show_banner': true,
+    'portal_announcement':
+        'Kỳ Fall 2026: Vui lòng nộp điểm danh trước 23h59 hàng ngày để đồng bộ dữ liệu FAP.',
     'attendance_warn_threshold': 0.15,
     'attendance_ban_threshold': 0.20,
     'enable_ai_assistant': true,
     'max_export_records': 500,
-    'portal_announcement':
-        'Kỳ Fall 2026: Vui lòng nộp điểm danh trước 23h59 hàng ngày để đồng bộ dữ liệu FAP.',
   };
 
-  final Map<String, dynamic> _activeValues = {};
+  final Map<String, dynamic> _overrides = {};
 
   bool get _isFirebaseReady {
     try {
@@ -43,96 +49,85 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
     }
   }
 
+  FirebaseRemoteConfig? get _rc => _isFirebaseReady ? FirebaseRemoteConfig.instance : null;
+
   @override
   Future<void> initialize() async {
-    _activeValues.addAll(_defaults);
-
-    if (_isFirebaseReady) {
-      try {
-        final remoteConfig = FirebaseRemoteConfig.instance;
-        await remoteConfig.setConfigSettings(
-          RemoteConfigSettings(
-            fetchTimeout: const Duration(seconds: 10),
-            minimumFetchInterval: Duration.zero, // Instant fetch for test/lab
-          ),
-        );
-        await remoteConfig.setDefaults(_defaults);
-
-        // Populate initial values from Remote Config cache
-        for (final entry in remoteConfig.getAll().entries) {
-          _activeValues[entry.key] = entry.value.asString();
-        }
-      } catch (e) {
-        debugPrint('Firebase Remote Config SDK init notice: $e');
-      }
-    }
-
     final prefs = await SharedPreferences.getInstance();
-    for (final key in _defaults.keys) {
-      final overrideKey = '$_prefPrefix$key';
-      if (prefs.containsKey(overrideKey)) {
-        final val = prefs.get(overrideKey);
-        if (val != null) {
-          _activeValues[key] = val;
-        }
+    for (final key in defaults.keys) {
+      final name = '$_prefPrefix$key';
+      if (prefs.containsKey(name)) {
+        final v = prefs.get(name);
+        if (v != null) _overrides[key] = v;
       }
     }
 
-    FirebaseEvidenceLogger.log(
-      service: 'Remote Config',
-      action: 'Initialized with defaults & SDK',
-      payload: Map<String, dynamic>.from(_activeValues),
-    );
+    final rc = _rc;
+    if (rc == null) {
+      FirebaseEvidenceLogger.log(
+        service: 'Remote Config',
+        action: 'Using in-app defaults (Firebase not initialized)',
+        payload: Map<String, dynamic>.from(defaults),
+        isSuccess: false,
+      );
+      return;
+    }
+
+    try {
+      await rc.setConfigSettings(
+        RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          // Debug: always fetch, so a Console change shows up on the next
+          // refresh. Release: cache for 5 minutes to stay under fetch quotas.
+          minimumFetchInterval:
+              kDebugMode ? Duration.zero : const Duration(minutes: 5),
+        ),
+      );
+      await rc.setDefaults(defaults);
+      FirebaseEvidenceLogger.log(
+        service: 'Remote Config',
+        action: 'Initialized with defaults',
+        payload: Map<String, dynamic>.from(defaults),
+        isSuccess: true,
+      );
+    } catch (e) {
+      debugPrint('Remote Config init failed: $e');
+      FirebaseEvidenceLogger.log(
+        service: 'Remote Config',
+        action: 'Initialization failed, defaults in effect',
+        payload: const {},
+        isSuccess: false,
+        errorMessage: e.toString(),
+      );
+    }
   }
 
   @override
   Future<bool> fetchAndActivate() async {
-    FirebaseEvidenceLogger.log(
-      service: 'Remote Config',
-      action: 'Fetching latest parameters from remote template',
-      payload: {'currentParametersCount': _activeValues.length},
-    );
+    final rc = _rc;
+    if (rc == null) return false;
 
     try {
-      if (_isFirebaseReady) {
-        try {
-          final remoteConfig = FirebaseRemoteConfig.instance;
-          final updated = await remoteConfig.fetchAndActivate();
-          if (updated) {
-            for (final entry in remoteConfig.getAll().entries) {
-              _activeValues[entry.key] = entry.value.asString();
-            }
-          }
-        } catch (sdkError) {
-          debugPrint('Remote config SDK fetch notice: $sdkError');
-        }
-
-        try {
-          final snapshot = await FirebaseFirestore.instance
-              .collection('remote_config')
-              .doc('current')
-              .get();
-          if (snapshot.exists && snapshot.data() != null) {
-            _activeValues.addAll(snapshot.data()!);
-          }
-        } catch (e) {
-          debugPrint('Remote config firestore sync note: $e');
-        }
-      }
-
+      final activated = await rc.fetchAndActivate();
       FirebaseEvidenceLogger.log(
         service: 'Remote Config',
-        action: 'Fetch and activate completed',
-        payload: Map<String, dynamic>.from(_activeValues),
+        action: activated
+            ? 'Fetched and activated new values'
+            : 'Fetched; values unchanged or served from cache',
+        payload: {
+          'lastFetchStatus': rc.lastFetchStatus.name,
+          ...getAllValues(),
+        },
         isSuccess: true,
       );
-
       return true;
     } catch (e) {
+      // Offline / throttled: the SDK keeps the last activated (or default)
+      // values, so the app stays usable.
       FirebaseEvidenceLogger.log(
         service: 'Remote Config',
-        action: 'Fetch and activate failed, using fallback cache',
-        payload: {'error': e.toString()},
+        action: 'Fetch failed, keeping cached/default values',
+        payload: getAllValues(),
         isSuccess: false,
         errorMessage: e.toString(),
       );
@@ -142,79 +137,76 @@ class FirebaseRemoteConfigService implements IRemoteConfigService {
 
   @override
   double getDouble(String key, double defaultValue) {
-    if (_isFirebaseReady) {
-      try {
-        final val = FirebaseRemoteConfig.instance.getDouble(key);
-        if (val != 0.0) return val;
-      } catch (_) {}
-    }
-    final val = _activeValues[key];
-    if (val is num) return val.toDouble();
-    if (val is String) return double.tryParse(val) ?? defaultValue;
-    return defaultValue;
+    final o = _overrides[key];
+    if (o is num) return o.toDouble();
+    final rc = _rc;
+    if (rc != null && defaults.containsKey(key)) return rc.getDouble(key);
+    final d = defaults[key];
+    return d is num ? d.toDouble() : defaultValue;
   }
 
   @override
   bool getBool(String key, bool defaultValue) {
-    if (_isFirebaseReady) {
-      try {
-        return FirebaseRemoteConfig.instance.getBool(key);
-      } catch (_) {}
-    }
-    final val = _activeValues[key];
-    if (val is bool) return val;
-    if (val is String) return val.toLowerCase() == 'true';
-    return defaultValue;
+    final o = _overrides[key];
+    if (o is bool) return o;
+    final rc = _rc;
+    if (rc != null && defaults.containsKey(key)) return rc.getBool(key);
+    final d = defaults[key];
+    return d is bool ? d : defaultValue;
   }
 
   @override
   int getInt(String key, int defaultValue) {
-    if (_isFirebaseReady) {
-      try {
-        final val = FirebaseRemoteConfig.instance.getInt(key);
-        if (val != 0) return val;
-      } catch (_) {}
-    }
-    final val = _activeValues[key];
-    if (val is int) return val;
-    if (val is num) return val.toInt();
-    if (val is String) return int.tryParse(val) ?? defaultValue;
-    return defaultValue;
+    final o = _overrides[key];
+    if (o is num) return o.toInt();
+    final rc = _rc;
+    if (rc != null && defaults.containsKey(key)) return rc.getInt(key);
+    final d = defaults[key];
+    return d is num ? d.toInt() : defaultValue;
   }
 
   @override
   String getString(String key, String defaultValue) {
-    if (_isFirebaseReady) {
-      try {
-        final val = FirebaseRemoteConfig.instance.getString(key);
-        if (val.isNotEmpty) return val;
-      } catch (_) {}
-    }
-    final val = _activeValues[key];
-    return val?.toString() ?? defaultValue;
+    final o = _overrides[key];
+    if (o is String) return o;
+    final rc = _rc;
+    if (rc != null && defaults.containsKey(key)) return rc.getString(key);
+    final d = defaults[key];
+    return d is String ? d : defaultValue;
   }
 
   @override
-  Map<String, dynamic> getAllValues() => Map.unmodifiable(_activeValues);
+  Map<String, dynamic> getAllValues() {
+    return {
+      for (final key in defaults.keys)
+        key: switch (defaults[key]) {
+          bool d => getBool(key, d),
+          int d => getInt(key, d),
+          double d => getDouble(key, d),
+          String d => getString(key, d),
+          _ => defaults[key],
+        },
+    };
+  }
 
   @override
   Future<void> setLocalOverride(String key, dynamic value) async {
-    _activeValues[key] = value;
+    _overrides[key] = value;
     final prefs = await SharedPreferences.getInstance();
-    final overrideKey = '$_prefPrefix$key';
+    final name = '$_prefPrefix$key';
     if (value is bool) {
-      await prefs.setBool(overrideKey, value);
+      await prefs.setBool(name, value);
     } else if (value is double) {
-      await prefs.setDouble(overrideKey, value);
+      await prefs.setDouble(name, value);
     } else if (value is int) {
-      await prefs.setInt(overrideKey, value);
+      await prefs.setInt(name, value);
     } else if (value is String) {
-      await prefs.setString(overrideKey, value);
+      await prefs.setString(name, value);
     }
 
     FirebaseEvidenceLogger.log(
       service: 'Remote Config',
-      action: 'Parameter updated via Console/Local override',
+      action: 'Local user override saved (device only)',
       payload: {'key': key, 'newValue': value},
     );
   }
