@@ -247,31 +247,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Đã kích hoạt gửi thử nghiệm FCM Notification thành công!',
+                                'Đã thêm một thông báo TRONG ỨNG DỤNG (không qua FCM). '
+                                'Để thử push thật, gửi từ Firebase Console tới token bên trên.',
                               ),
                             ),
                           );
                         }
                       },
                       icon: const Icon(Icons.notification_add_outlined),
-                      label: const Text('Thử nghiệm FCM Push Notification'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        widget.viewModel.triggerTestCrash();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Đã ghi nhận sự kiện Test Crash vào Crashlytics!',
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.bug_report_outlined),
-                      label: const Text('Thử nghiệm Crashlytics Report'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.errorText,
-                      ),
+                      label: const Text('Thêm thông báo trong ứng dụng (thử)'),
                     ),
                   ],
                 ),

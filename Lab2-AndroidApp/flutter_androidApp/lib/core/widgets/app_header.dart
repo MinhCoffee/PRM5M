@@ -8,9 +8,10 @@ class AppHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = ServiceLocator.instance.authService.currentUser;
-    final displayName = user?.displayName ?? 'Dr. Nguyen Van Minh';
-    final lecturerCode = user?.lecturerCode ?? 'minhnd32';
+    final locator = ServiceLocator.instance;
+    final user = locator.authService.currentUser;
+    final displayName = user?.displayName ?? '';
+    final lecturerCode = user?.lecturerCode ?? '';
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -83,7 +84,7 @@ class AppHeader extends StatelessWidget {
                           child: Text(
                             displayName.isNotEmpty
                                 ? displayName[0].toUpperCase()
-                                : 'M',
+                                : '?',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -91,7 +92,7 @@ class AppHeader extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (!isMobile) ...[
+                        if (!isMobile && displayName.isNotEmpty) ...[
                           const SizedBox(width: 8),
                           Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -102,7 +103,7 @@ class AppHeader extends StatelessWidget {
                                 style: Theme.of(context).textTheme.labelLarge,
                               ),
                               Text(
-                                'Mã GV: $lecturerCode',
+                                lecturerCode.isEmpty ? '' : 'Mã GV: $lecturerCode',
                                 style: Theme.of(context)
                                     .textTheme
                                     .labelSmall
@@ -116,7 +117,23 @@ class AppHeader extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 4),
+                  ValueListenableBuilder<int>(
+                    valueListenable: locator.messagingService.historyRevision,
+                    builder: (context, _, __) {
+                      final unread = locator.messagingService.unreadCount;
+                      return IconButton(
+                        key: const Key('header_notifications'),
+                        onPressed: () => context.go('/notifications'),
+                        tooltip: 'Thông báo',
+                        icon: Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text('$unread'),
+                          child: const Icon(Icons.notifications_outlined),
+                        ),
+                      );
+                    },
+                  ),
                   IconButton(
                     onPressed: () => context.go('/login?logout=1'),
                     icon: const Icon(Icons.logout_outlined),
