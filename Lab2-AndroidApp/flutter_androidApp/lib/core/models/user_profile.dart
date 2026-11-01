@@ -15,7 +15,7 @@ class UserProfile {
     required this.displayName,
     required this.email,
     this.photoUrl = '',
-    this.lecturerCode = 'minhnd32',
+    this.lecturerCode = '',
     this.department = 'Software Engineering (SE)',
     this.campus = 'FPT University - HCM Campus',
     this.authProvider = 'google.com',

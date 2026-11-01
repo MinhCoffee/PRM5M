@@ -10,6 +10,9 @@ import 'package:flutter_application_1/services/google_sheet_service.dart';
 class FakeAuthService implements IAuthService {
   UserProfile? _user;
   bool shouldFail = false;
+
+  /// When set, thrown instead of the generic network exception.
+  Object? failure;
   final _controller = StreamController<UserProfile?>.broadcast();
 
   @override
@@ -22,16 +25,19 @@ class FakeAuthService implements IAuthService {
   Future<bool> hasCachedSession() async => _user != null;
 
   @override
-  Future<UserProfile?> signInWithGoogle() async {
+  Future<UserProfile> signInWithGoogle() async {
+    if (failure != null) throw failure!;
     if (shouldFail) {
       throw Exception('Network connection timed out');
     }
-    _user = UserProfile.defaultLecturer(
-      email: 'minhnd32@fpt.edu.vn',
-      name: 'Dr. Nguyen Van Minh',
+    final user = UserProfile(
+      id: 'uid-test-1',
+      displayName: 'Test Lecturer',
+      email: 'lecturer.test@example.com',
     );
-    _controller.add(_user);
-    return _user;
+    _user = user;
+    _controller.add(user);
+    return user;
   }
 
   @override
@@ -166,6 +172,42 @@ void main() {
       expect(viewModel.state.hasError, isTrue);
       expect(viewModel.state.errorMessage, contains('Network connection timed out'));
       expect(fakeCrashlytics.recordedErrors.isNotEmpty, isTrue);
+    });
+
+    test('Cancelled Google sign-in shows a clear message and is NOT a crash',
+        () async {
+      fakeAuth.failure = const AuthException(
+        AuthFailureKind.cancelled,
+        'Bạn đã hủy đăng nhập Google.',
+      );
+
+      final success = await viewModel.signInWithGoogle();
+
+      expect(success, isFalse);
+      expect(viewModel.state.hasError, isTrue);
+      expect(viewModel.state.errorMessage, contains('hủy đăng nhập'));
+      expect(fakeCrashlytics.recordedErrors, isEmpty);
+      expect(fakeAnalytics.loggedEvents, contains('login_cancelled'));
+    });
+
+    test('Network loss during sign-in is reported and recorded', () async {
+      fakeAuth.failure = const AuthException(
+        AuthFailureKind.network,
+        'Mất kết nối mạng.',
+      );
+
+      final success = await viewModel.signInWithGoogle();
+
+      expect(success, isFalse);
+      expect(viewModel.state.errorMessage, contains('Mất kết nối mạng'));
+      expect(fakeCrashlytics.recordedErrors, isNotEmpty);
+      expect(fakeAnalytics.loggedEvents, contains('login_failed'));
+    });
+
+    test('Cached session never unlocks without a real Firebase user', () async {
+      // Sheets credentials alone must not authenticate (auth has no session).
+      await viewModel.checkCachedSession();
+      expect(viewModel.isAuthenticated, isFalse);
     });
 
     test('Error Recovery: retrySignIn succeeds after fixing network', () async {

@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/services/google_sign_in_bootstrap.dart';
 import '../models/attendance_record.dart';
 import '../models/student.dart';
 
@@ -894,20 +895,7 @@ class GoogleSheetService {
   }
 
   static const _sheetScopes = ['https://www.googleapis.com/auth/spreadsheets'];
-  static bool _googleSignInReady = false;
-
-  Future<void> _ensureGoogleSignIn() async {
-    if (_googleSignInReady) return;
-    // serverClientId must be the *Web application* OAuth client ID.
-    final serverClientId = _readEnv('GOOGLE_WEB_CLIENT_ID')?.trim();
-    await GoogleSignIn.instance.initialize(
-      serverClientId:
-          (serverClientId == null || serverClientId.isEmpty)
-          ? null
-          : serverClientId,
-    );
-    _googleSignInReady = true;
-  }
+  Future<void> _ensureGoogleSignIn() => GoogleSignInBootstrap.ensureInitialized();
 
   /// Android: native Google account picker (no localhost callback needed).
   Future<auth.AuthClient> _requestAndroidClient() async {
