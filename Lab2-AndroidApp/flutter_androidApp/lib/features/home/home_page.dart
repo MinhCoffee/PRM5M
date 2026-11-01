@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/state_view.dart';
 import '../../services/attendance_stats_service.dart';
-import '../../services/google_sheet_service.dart';
 import 'viewmodel/home_viewmodel.dart';
 
 class HomePage extends StatefulWidget {
@@ -51,7 +50,7 @@ class _HomePageState extends State<HomePage> {
       padding: EdgeInsets.all(narrow ? 16 : 24),
       children: [
         // Announcement from Remote Config
-        if (data.announcement.isNotEmpty) ...[
+        if (data.showBanner && data.announcement.isNotEmpty) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -119,7 +118,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _statCard(
                   'Ca học hôm nay',
-                  '${data.todaySessions.length}',
+                  '${data.totalTodaySessions}',
                   Icons.calendar_today_outlined,
                   AppColors.primary,
                   cardWidth,
@@ -153,6 +152,16 @@ class _HomePageState extends State<HomePage> {
 
         // Today's Sessions Section
         Text("Ca học hôm nay", style: Theme.of(context).textTheme.headlineMedium),
+        if (data.hiddenSessionCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Hiển thị ${data.todaySessions.length}/${data.totalTodaySessions} ca '
+              '(giới hạn max_items = ${data.maxItems} từ Remote Config).',
+              key: const Key('home_max_items_note'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         const SizedBox(height: 12),
         if (data.todaySessions.isEmpty)
           const Card(

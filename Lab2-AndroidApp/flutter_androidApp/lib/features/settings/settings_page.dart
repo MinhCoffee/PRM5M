@@ -310,15 +310,34 @@ class _SettingsPageState extends State<SettingsPage> {
                       runSpacing: 8,
                       children: [
                         OutlinedButton.icon(
-                          onPressed: () {
-                            widget.viewModel.triggerTestCrash();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Đã ném thử ngoại lệ Fatal Crash vào Firebase Crashlytics!',
+                          onPressed: () async {
+                            // A real crash closes the app, so make it deliberate.
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Gây crash có chủ đích?'),
+                                content: const Text(
+                                  'Ứng dụng sẽ đóng đột ngột để tạo một báo cáo '
+                                  'crash thử trên Firebase Crashlytics. Mở lại '
+                                  'ứng dụng để báo cáo được gửi đi. Chỉ dùng khi '
+                                  'trình diễn.',
                                 ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Hủy'),
+                                  ),
+                                  FilledButton(
+                                    key: const Key('confirm_test_crash'),
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('Gây crash'),
+                                  ),
+                                ],
                               ),
                             );
+                            if (confirmed == true) {
+                              widget.viewModel.triggerTestCrash();
+                            }
                           },
                           icon: const Icon(Icons.warning_amber_rounded),
                           label: const Text('Ném thử lỗi (Test Crash)'),

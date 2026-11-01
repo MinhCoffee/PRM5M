@@ -13,13 +13,27 @@ class HomeDashboardData {
   final int draftSessionsCount;
   final String announcement;
 
+  /// Remote Config `show_banner`: whether the announcement banner is shown.
+  final bool showBanner;
+
+  /// Remote Config `max_items`: cap on how many of today's sessions are listed.
+  final int maxItems;
+
+  /// How many of today's sessions exist before the `max_items` cap is applied.
+  final int totalTodaySessions;
+
   const HomeDashboardData({
     required this.todaySessions,
     required this.overallRate,
     required this.bannedStudentsCount,
     required this.draftSessionsCount,
     required this.announcement,
-  });
+    this.showBanner = true,
+    this.maxItems = 10,
+    int? totalTodaySessions,
+  }) : totalTodaySessions = totalTodaySessions ?? todaySessions.length;
+
+  int get hiddenSessionCount => totalTodaySessions - todaySessions.length;
 }
 
 class HomeViewModel extends ChangeNotifier {
@@ -86,8 +100,14 @@ class HomeViewModel extends ChangeNotifier {
         'Kỳ Fall 2026: Vui lòng nộp điểm danh trước 23h59 hàng ngày để đồng bộ dữ liệu FAP.',
       );
 
+      final showBanner = _remoteConfigService.getBool('show_banner', true);
+      final maxItems = _remoteConfigService.getInt('max_items', 10).clamp(1, 100);
+
       final dashboardData = HomeDashboardData(
-        todaySessions: todaySessions,
+        todaySessions: todaySessions.take(maxItems).toList(),
+        totalTodaySessions: todaySessions.length,
+        showBanner: showBanner,
+        maxItems: maxItems,
         overallRate: overallRate,
         bannedStudentsCount: bannedStudentsCount,
         draftSessionsCount: draftSessionsCount,

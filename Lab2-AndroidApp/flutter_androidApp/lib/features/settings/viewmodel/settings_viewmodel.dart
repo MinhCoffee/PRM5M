@@ -112,10 +112,15 @@ class SettingsViewModel extends ChangeNotifier {
   }
 
   void triggerTestCrash() {
+    // Custom diagnostic keys show up on the crash in the Crashlytics console.
+    _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
+    _crashlyticsService.setCustomKey('intentional_test_crash', true);
+    _crashlyticsService.log('User confirmed intentional test crash');
     _crashlyticsService.testCrash();
   }
 
   Future<void> triggerTestNonFatalError() async {
+    _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
     await _crashlyticsService.sendNonFatalError(
       'Lab 3 Non-Fatal Test Error from Settings Page',
     );

@@ -33,14 +33,17 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final hasSheetCreds = await _sheetService.hasCachedCredentials();
-      final hasAuthCreds = await _authService.hasCachedSession();
+      // A real, persisted Firebase session is mandatory; Sheets credentials
+      // alone must not unlock the app.
+      final hasAuthSession = await _authService.hasCachedSession();
+      final user = _authService.currentUser;
 
-      if (hasSheetCreds || hasAuthCreds) {
+      if (hasAuthSession && user != null) {
         final connected = await _sheetService.init();
         if (connected) {
-          final user = _authService.currentUser ?? UserProfile.defaultLecturer();
           _state = ViewState.data(user);
+          _analyticsService.setUserId(user.id);
+          _crashlyticsService.setUserIdentifier(user.id);
           _analyticsService.logLogin('cached_credentials');
           notifyListeners();
           return;
@@ -68,25 +71,38 @@ class AuthViewModel extends ChangeNotifier {
       final connected = await _sheetService.init();
 
       if (!connected) {
+        // Do not leave a half-signed-in Firebase session behind.
+        await _authService.signOut();
         final err = _sheetService.lastError ?? 'Không thể kết nối đến Google Sheets.';
         _state = ViewState.error(err);
-        _analyticsService.logEvent('login_failed', {'reason': err});
+        _analyticsService.logEvent('login_failed', {'reason': 'sheets_unreachable'});
         notifyListeners();
         return false;
       }
 
-      final verifiedUser = user ?? UserProfile.defaultLecturer();
-      _state = ViewState.data(verifiedUser);
+      _state = ViewState.data(user);
       _analyticsService.logLogin('google_oauth_firebase');
-      _analyticsService.setUserId(verifiedUser.id);
-      _crashlyticsService.setUserIdentifier(verifiedUser.id);
+      _analyticsService.setUserId(user.id);
+      _crashlyticsService.setUserIdentifier(user.id);
+      _crashlyticsService.setCustomKey('auth_provider', user.authProvider);
       notifyListeners();
       return true;
+    } on AuthException catch (e, st) {
+      _state = ViewState.error(e.userMessage);
+      if (e.isCancelled) {
+        // A deliberate user action, not an app fault.
+        _analyticsService.logEvent('login_cancelled', {});
+      } else {
+        _analyticsService.logEvent('login_failed', {'reason': e.kind.name});
+        _crashlyticsService.recordError(e, st,
+            reason: 'Google sign-in failed: ${e.kind.name}');
+      }
+      notifyListeners();
+      return false;
     } catch (e, st) {
       _crashlyticsService.recordError(e, st, reason: 'Google sign-in flow failed');
-      final err = 'Xác thực Google thất bại: $e';
-      _state = ViewState.error(err);
-      _analyticsService.logEvent('login_failed', {'error': e.toString()});
+      _state = ViewState.error('Xác thực Google thất bại: $e');
+      _analyticsService.logEvent('login_failed', {'reason': 'unexpected'});
       notifyListeners();
       return false;
     }

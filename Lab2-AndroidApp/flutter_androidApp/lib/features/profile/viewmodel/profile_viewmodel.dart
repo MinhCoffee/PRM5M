@@ -44,10 +44,19 @@ class ProfileViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final user = _authService.currentUser ?? UserProfile.defaultLecturer();
-      _fcmToken = await _messagingService.getFcmToken();
-      final reports = await _storageService.getUploadedReports();
-      _uploadedReportsCount = reports.length;
+      final user = _authService.currentUser;
+      if (user == null) {
+        throw StateError('Chưa đăng nhập: không có hồ sơ người dùng.');
+      }
+      _fcmToken = await _messagingService.getFcmToken() ??
+          'Chưa có token FCM (chưa cấp quyền, offline hoặc Firebase chưa cấu hình)';
+      try {
+        final reports = await _storageService.getUploadedReports();
+        _uploadedReportsCount = reports.length;
+      } on StorageFailure {
+        // A Storage problem must not hide the whole profile screen.
+        _uploadedReportsCount = 0;
+      }
 
       _state = ViewState.data(user);
       _analyticsService.logScreenView('user_profile_screen');
@@ -59,13 +68,9 @@ class ProfileViewModel extends ChangeNotifier {
     }
   }
 
-  void triggerTestCrash() {
-    _crashlyticsService.testCrash();
-  }
-
   Future<void> triggerTestPushNotification() async {
     await _messagingService.sendLocalNotification(
-      title: '🚨 Cảnh báo vắng học kỳ (FCM)',
+      title: '🚨 Cảnh báo vắng học kỳ (thông báo trong ứng dụng)',
       body: 'Lớp SE1801 có 2 sinh viên vượt ngưỡng vắng 20%. Nhấn để xem chi tiết.',
       data: {'type': 'risk_alert', 'classCode': 'SE1801'},
     );

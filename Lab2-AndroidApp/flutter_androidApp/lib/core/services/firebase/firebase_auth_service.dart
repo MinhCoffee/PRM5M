@@ -4,23 +4,40 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../models/user_profile.dart';
+import '../google_sign_in_bootstrap.dart';
 import 'firebase_evidence_logger.dart';
 
+enum AuthFailureKind { cancelled, network, misconfigured, unknown }
+
+/// Error with a message that is safe to show to the user.
+class AuthException implements Exception {
+  final AuthFailureKind kind;
+  final String userMessage;
+  final Object? cause;
+
+  const AuthException(this.kind, this.userMessage, {this.cause});
+
+  bool get isCancelled => kind == AuthFailureKind.cancelled;
+
+  @override
+  String toString() => 'AuthException($kind): $userMessage';
+}
+
 abstract interface class IAuthService {
-  Future<UserProfile?> signInWithGoogle();
+  /// Signs in with Google and links it to Firebase Auth.
+  /// Throws [AuthException]; never returns a made-up user.
+  Future<UserProfile> signInWithGoogle();
   Future<void> signOut();
   UserProfile? get currentUser;
   Stream<UserProfile?> get authStateChanges;
+
+  /// True only when Firebase Auth restored a real, persisted session.
   Future<bool> hasCachedSession();
 }
 
 class FirebaseAuthService implements IAuthService {
-  final GoogleSignIn _googleSignIn;
   UserProfile? _cachedUser;
   final _authController = StreamController<UserProfile?>.broadcast();
-
-  FirebaseAuthService({GoogleSignIn? googleSignIn})
-      : _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
 
   @override
   UserProfile? get currentUser => _cachedUser;
@@ -36,139 +53,140 @@ class FirebaseAuthService implements IAuthService {
     }
   }
 
+  UserProfile _toProfile(fb_auth.User user) {
+    final email = user.email ?? '';
+    return UserProfile(
+      id: user.uid,
+      displayName: (user.displayName?.isNotEmpty ?? false)
+          ? user.displayName!
+          : email,
+      email: email,
+      photoUrl: user.photoURL ?? '',
+      lecturerCode: email.contains('@') ? email.split('@').first : '',
+      authProvider: 'firebase_auth',
+      isEmailVerified: user.emailVerified,
+      lastSignInTime: user.metadata.lastSignInTime,
+    );
+  }
+
   @override
   Future<bool> hasCachedSession() async {
+    if (!_isFirebaseReady) return false;
     try {
-      if (_isFirebaseReady) {
-        final fbUser = fb_auth.FirebaseAuth.instance.currentUser;
-        if (fbUser != null) {
-          _cachedUser = UserProfile(
-            id: fbUser.uid,
-            displayName: fbUser.displayName ?? 'Giảng viên FPT',
-            email: fbUser.email ?? 'lecturer@fpt.edu.vn',
-            photoUrl: fbUser.photoURL ?? '',
-            authProvider: 'firebase_auth',
-            isEmailVerified: fbUser.emailVerified,
-            lastSignInTime: fbUser.metadata.lastSignInTime,
-          );
-          _authController.add(_cachedUser);
-          return true;
-        }
-      }
-      return _cachedUser != null;
+      final fbUser = fb_auth.FirebaseAuth.instance.currentUser;
+      if (fbUser == null) return false;
+      _cachedUser = _toProfile(fbUser);
+      _authController.add(_cachedUser);
+      return true;
     } catch (_) {
       return false;
     }
   }
 
   @override
-  Future<UserProfile?> signInWithGoogle() async {
+  Future<UserProfile> signInWithGoogle() async {
     FirebaseEvidenceLogger.log(
       service: 'Authentication',
       action: 'Initiating Google Sign-In flow',
       payload: {'timestamp': DateTime.now().toIso8601String()},
     );
 
+    if (!_isFirebaseReady) {
+      const err = AuthException(
+        AuthFailureKind.misconfigured,
+        'Firebase chưa được khởi tạo. Kiểm tra google-services.json và '
+        'khởi động lại ứng dụng.',
+      );
+      _logFailure(err);
+      throw err;
+    }
+
     try {
-      // 1. Authenticate with Google
-      final googleUser = await _googleSignIn.authenticate();
-      final email = googleUser.email;
-      final displayName = googleUser.displayName ?? 'Dr. Nguyen Van Minh';
-      final photoUrl = googleUser.photoUrl ?? '';
-      final googleId = googleUser.id;
-
-      UserProfile userProfile;
-
-      // 2. If Firebase is active, sign in to Firebase Auth with Google OAuth credential
-      if (_isFirebaseReady) {
-        try {
-          String? idToken;
-          String? token;
-
-          try {
-            final googleAuth = await googleUser.authentication;
-            idToken = googleAuth.idToken;
-            token = googleAuth.accessToken;
-          } catch (_) {}
-
-          if (token == null) {
-            final authorization = await googleUser.authorizationClient.authorizationForScopes([
-              'email',
-              'https://www.googleapis.com/auth/userinfo.profile',
-            ]);
-            token = authorization?.accessToken;
-          }
-
-          if (token != null || idToken != null) {
-            final credential = fb_auth.GoogleAuthProvider.credential(
-              accessToken: token,
-              idToken: idToken,
-            );
-            final userCredential =
-                await fb_auth.FirebaseAuth.instance.signInWithCredential(credential);
-            final fbUser = userCredential.user;
-            userProfile = UserProfile(
-              id: fbUser?.uid ?? googleId,
-              displayName: fbUser?.displayName ?? displayName,
-              email: fbUser?.email ?? email,
-              photoUrl: fbUser?.photoURL ?? photoUrl,
-              authProvider: 'firebase_auth',
-              isEmailVerified: fbUser?.emailVerified ?? true,
-              lastSignInTime: fbUser?.metadata.lastSignInTime ?? DateTime.now(),
-            );
-          } else {
-            userProfile = UserProfile.defaultLecturer(
-              email: email,
-              name: displayName,
-              photoUrl: photoUrl,
-              id: googleId,
-            );
-          }
-        } catch (e) {
-          debugPrint('FirebaseAuth link error, falling back to Google account: $e');
-          userProfile = UserProfile.defaultLecturer(
-            email: email,
-            name: displayName,
-            photoUrl: photoUrl,
-            id: googleId,
-          );
-        }
-      } else {
-        userProfile = UserProfile.defaultLecturer(
-          email: email,
-          name: displayName,
-          photoUrl: photoUrl,
-          id: googleId,
+      await GoogleSignInBootstrap.ensureInitialized();
+      final googleUser = await GoogleSignIn.instance.authenticate();
+      final idToken = googleUser.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw const AuthException(
+          AuthFailureKind.misconfigured,
+          'Google không trả về idToken. Kiểm tra SHA-1/SHA-256 trong Firebase '
+          'và GOOGLE_WEB_CLIENT_ID trong .env.',
         );
       }
 
-      _cachedUser = userProfile;
-      _authController.add(_cachedUser);
+      final credential = fb_auth.GoogleAuthProvider.credential(idToken: idToken);
+      final userCredential =
+          await fb_auth.FirebaseAuth.instance.signInWithCredential(credential);
+      final fbUser = userCredential.user;
+      if (fbUser == null) {
+        throw const AuthException(
+          AuthFailureKind.unknown,
+          'Firebase không trả về người dùng sau khi đăng nhập.',
+        );
+      }
+
+      final profile = _toProfile(fbUser);
+      _cachedUser = profile;
+      _authController.add(profile);
 
       FirebaseEvidenceLogger.log(
         service: 'Authentication',
         action: 'Google Sign-In Success',
-        payload: {
-          'uid': userProfile.id,
-          'email': userProfile.email,
-          'displayName': userProfile.displayName,
-          'provider': userProfile.authProvider,
-        },
+        // uid only: no email / display name in logs.
+        payload: {'uid': profile.id, 'provider': profile.authProvider},
         isSuccess: true,
       );
-
-      return _cachedUser;
-    } catch (e, st) {
-      FirebaseEvidenceLogger.log(
-        service: 'Authentication',
-        action: 'Google Sign-In Failed',
-        payload: {'error': e.toString()},
-        isSuccess: false,
-        errorMessage: e.toString(),
-      );
-      debugPrint('Sign in error: $e\n$st');
+      return profile;
+    } on AuthException catch (e) {
+      _logFailure(e);
       rethrow;
+    } on GoogleSignInException catch (e) {
+      final err = e.code == GoogleSignInExceptionCode.canceled
+          ? AuthException(
+              AuthFailureKind.cancelled,
+              'Bạn đã hủy đăng nhập Google. Nhấn "Đăng nhập" để thử lại.',
+              cause: e,
+            )
+          : AuthException(
+              AuthFailureKind.unknown,
+              'Đăng nhập Google thất bại (${e.code.name}).',
+              cause: e,
+            );
+      _logFailure(err);
+      throw err;
+    } on fb_auth.FirebaseAuthException catch (e) {
+      final err = e.code == 'network-request-failed'
+          ? AuthException(
+              AuthFailureKind.network,
+              'Mất kết nối mạng. Kiểm tra Wi-Fi/4G rồi thử lại.',
+              cause: e,
+            )
+          : AuthException(
+              AuthFailureKind.unknown,
+              'Firebase từ chối đăng nhập (${e.code}).',
+              cause: e,
+            );
+      _logFailure(err);
+      throw err;
+    } catch (e) {
+      final err = AuthException(
+        AuthFailureKind.unknown,
+        'Đăng nhập thất bại: $e',
+        cause: e,
+      );
+      _logFailure(err);
+      throw err;
     }
+  }
+
+  void _logFailure(AuthException e) {
+    FirebaseEvidenceLogger.log(
+      service: 'Authentication',
+      action: 'Google Sign-In Failed (${e.kind.name})',
+      payload: {'kind': e.kind.name},
+      isSuccess: false,
+      errorMessage: e.userMessage,
+    );
+    debugPrint('Sign in failed: ${e.kind.name} ${e.cause ?? ''}');
   }
 
   @override
@@ -176,14 +194,15 @@ class FirebaseAuthService implements IAuthService {
     FirebaseEvidenceLogger.log(
       service: 'Authentication',
       action: 'Signing out',
-      payload: {'email': _cachedUser?.email ?? 'unknown'},
+      payload: {'uid': _cachedUser?.id ?? 'unknown'},
     );
 
     try {
       if (_isFirebaseReady) {
         await fb_auth.FirebaseAuth.instance.signOut();
       }
-      await _googleSignIn.signOut();
+      await GoogleSignInBootstrap.ensureInitialized();
+      await GoogleSignIn.instance.signOut();
     } catch (e) {
       debugPrint('SignOut exception: $e');
     } finally {

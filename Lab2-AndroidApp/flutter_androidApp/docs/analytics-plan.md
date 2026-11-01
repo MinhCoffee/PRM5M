@@ -30,12 +30,13 @@ Tuân thủ nghiêm ngặt điều khoản Google Analytics for Firebase:
 |:---:|:---|:---|:---|:---|:---:|:---|:---:|
 | **1** | `login` | Giảng viên hoàn tất quá trình xác thực đăng nhập vào hệ thống | `lib/features/auth/viewmodel/auth_viewmodel.dart` | `method` | String | `"google_oauth_firebase"` |  Hợp lệ (không chứa email) |
 | **2** | `screen_view` | Giảng viên chuyển sang xem màn hình mới | Các ViewModel khi `load()` thành công | `screen_name` | String | `"home_screen"`, `"reports_screen"`, `"timetable_screen"` |  Hợp lệ |
-| **3** | `attendance_marked` | Giảng viên tích chọn trạng thái có mặt/vắng cho sinh viên trong ca | `lib/features/attendance/viewmodel/attendance_detail_viewmodel.dart` | `session_id`<br>`present_count`<br>`absent_count` | String<br>Integer<br>Integer | `"SES_SE1801_S1"`<br>`28`<br>`2` |  Hợp lệ (chỉ truyền ID ca & số lượng) |
+| **3** | `attendance_marked` | Giảng viên **lưu** (nháp hoặc nộp) điểm danh của một ca; ghi số lượng có mặt/vắng tại thời điểm lưu | `lib/features/attendance/viewmodel/attendance_detail_viewmodel.dart` | `session_id`<br>`present_count`<br>`absent_count` | String<br>Integer<br>Integer | `"SES_SE1801_S1"`<br>`28`<br>`2` |  Hợp lệ (chỉ truyền ID ca & số lượng) |
 | **4** | `attendance_submitted` | Giảng viên bấm nút nộp và đồng bộ dữ liệu điểm danh chính thức | `lib/features/attendance/viewmodel/attendance_detail_viewmodel.dart` | `session_id`<br>`class_code` | String<br>String | `"SES_SE1801_S1"`<br>`"SE1801"` |  Hợp lệ |
 | **5** | `export_report` | Giảng viên xuất báo cáo chuyên cần hoặc file đồng bộ FAP | `lib/features/reports/viewmodel/reports_viewmodel.dart`<br>`lib/features/export/viewmodel/export_viewmodel.dart` | `class_code`<br>`file_type` | String<br>String | `"SE1801"`<br>`"csv"` hoặc `"fap_csv"` |  Hợp lệ |
 | **6** | `filter_changed` | Giảng viên thao tác thay đổi bộ lọc học kỳ, môn học hoặc mã lớp | `lib/features/reports/viewmodel/reports_viewmodel.dart`<br>`lib/features/attendance/viewmodel/attendance_browse_viewmodel.dart` | `filter_type`<br>`filter_value` | String<br>String | `"semester"`, `"2026"`<br>`"class"`, `"SE1801"` |  Hợp lệ |
 | **7** | `save_thresholds` | Giảng viên điều chỉnh ngưỡng cảnh báo vắng (Warning/Banned) | `lib/features/settings/viewmodel/settings_viewmodel.dart` | `warn`<br>`ban` | Double<br>Double | `0.15`<br>`0.20` |  Hợp lệ |
-| **8** *(Bonus)* | `seed_sample_data` | Giảng viên tạo lại dữ liệu mẫu kiểm thử | `lib/features/settings/viewmodel/settings_viewmodel.dart` | `subjects`<br>`classes` | Integer<br>Integer | `4`<br>`6` |  Hợp lệ |
+| **8** *(Bonus)* | `login_failed` / `login_cancelled` / `logout` | Đăng nhập thất bại (tham số `reason`: `network`, `misconfigured`, `sheets_unreachable`…), người dùng hủy, hoặc đăng xuất | `lib/features/auth/viewmodel/auth_viewmodel.dart` | `reason` | String | `"network"` | Hợp lệ (không chứa thông báo lỗi thô) |
+| **9** *(Bonus)* | `seed_sample_data` | Giảng viên tạo lại dữ liệu mẫu kiểm thử | `lib/features/settings/viewmodel/settings_viewmodel.dart` | `subjects`<br>`classes` | Integer<br>Integer | `4`<br>`6` |  Hợp lệ |
 
 ---
 

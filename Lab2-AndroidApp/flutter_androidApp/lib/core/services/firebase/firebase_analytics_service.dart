@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -45,7 +44,7 @@ class FirebaseAnalyticsService implements IAnalyticsService {
   Future<void> setUserId(String? userId) async {
     FirebaseEvidenceLogger.log(
       service: 'Analytics',
-      action: 'Set User ID: $userId',
+      action: 'Set User ID',
       payload: {'userId': userId ?? 'null'},
     );
 
@@ -60,25 +59,14 @@ class FirebaseAnalyticsService implements IAnalyticsService {
 
   @override
   Future<void> logScreenView(String screenName) async {
-    if (_isFirebaseReady) {
-      try {
-        await FirebaseAnalytics.instance.logScreenView(screenName: screenName);
-      } catch (e) {
-        debugPrint('Firebase Analytics logScreenView error: $e');
-      }
-    }
+    // Recommended event `screen_view`, sent once (via logEvent) so DebugView
+    // shows exactly one entry per navigation.
     await logEvent('screen_view', {'screen_name': screenName});
   }
 
   @override
   Future<void> logLogin(String method) async {
-    if (_isFirebaseReady) {
-      try {
-        await FirebaseAnalytics.instance.logLogin(loginMethod: method);
-      } catch (e) {
-        debugPrint('Firebase Analytics logLogin error: $e');
-      }
-    }
+    // Recommended event `login`, sent once via logEvent.
     await logEvent('login', {'method': method});
   }
 
@@ -152,16 +140,6 @@ class FirebaseAnalyticsService implements IAnalyticsService {
         );
       } catch (e) {
         debugPrint('Firebase Analytics logEvent error: $e');
-      }
-
-      try {
-        await FirebaseFirestore.instance.collection('analytics_events').add({
-          'eventName': name,
-          'params': parameters ?? {},
-          'clientTimestamp': FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        debugPrint('Analytics firestore record notice: $e');
       }
     }
   }

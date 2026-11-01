@@ -7,10 +7,14 @@ class LoginPage extends StatefulWidget {
   final AuthViewModel viewModel;
   final bool loggedOut;
 
+  /// Where to go once authenticated (e.g. a tapped notification's screen).
+  final String Function()? postLoginRoute;
+
   const LoginPage({
     super.key,
     required this.viewModel,
     this.loggedOut = false,
+    this.postLoginRoute,
   });
 
   @override
@@ -27,7 +31,7 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         widget.viewModel.checkCachedSession().then((_) {
           if (mounted && widget.viewModel.isAuthenticated) {
-            context.go('/home');
+            context.go(widget.postLoginRoute?.call() ?? '/home');
           }
         });
       }
@@ -37,7 +41,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _handleSignIn() async {
     final success = await widget.viewModel.signInWithGoogle();
     if (mounted && success) {
-      context.go('/home');
+      context.go(widget.postLoginRoute?.call() ?? '/home');
     }
   }
 
@@ -207,11 +211,14 @@ class _LoginPageState extends State<LoginPage> {
                               color: AppColors.outline,
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              'Đăng nhập bảo mật qua Google OAuth 2.0 & Firebase',
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: AppColors.outline,
-                                  ),
+                            Flexible(
+                              child: Text(
+                                'Đăng nhập bảo mật qua Google OAuth 2.0 & Firebase',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                      color: AppColors.outline,
+                                    ),
+                              ),
                             ),
                           ],
                         ),
