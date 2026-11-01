@@ -18,6 +18,7 @@ import '../../features/timetable/viewmodel/timetable_viewmodel.dart';
 import '../../features/reports/viewmodel/reports_viewmodel.dart';
 import '../../features/export/viewmodel/export_viewmodel.dart';
 import '../../features/ai_assistant/viewmodel/ai_assistant_viewmodel.dart';
+import '../../features/notifications/viewmodel/notifications_viewmodel.dart';
 import '../../features/profile/viewmodel/profile_viewmodel.dart';
 import '../../features/settings/viewmodel/settings_viewmodel.dart';
 
@@ -151,6 +152,12 @@ class ServiceLocator {
         messagingService: messagingService,
         analyticsService: analyticsService,
         crashlyticsService: crashlyticsService,
+      );
+
+  NotificationsViewModel createNotificationsViewModel() =>
+      NotificationsViewModel(
+        messagingService: messagingService,
+        analyticsService: analyticsService,
       );
 
   ProfileViewModel createProfileViewModel() => ProfileViewModel(
