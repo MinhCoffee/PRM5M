@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../../core/models/cloud_backup_mixin.dart';
 import '../../../core/models/view_state.dart';
 import '../../../core/services/firebase/firebase_analytics_service.dart';
 import '../../../core/services/firebase/firebase_crashlytics_service.dart';
@@ -26,7 +27,10 @@ class ReportsData {
   });
 }
 
-class ReportsViewModel extends ChangeNotifier {
+class ReportsViewModel extends ChangeNotifier with CloudBackupMixin {
+  @override
+  IStorageService get backupStorageService => _storageService;
+
   final AttendanceStatsService _statsService;
   final FileService _fileService;
   final IStorageService _storageService;
@@ -216,15 +220,10 @@ class ReportsViewModel extends ChangeNotifier {
       }
 
       // 2. Upload backup to Firebase Cloud Storage (Service 2)
-      try {
-        await _storageService.uploadReport(
-          fileName: fileName,
-          content: csvContent,
-          classCode: _classCode,
-        );
-      } catch (uploadError) {
-        debugPrint('Cloud storage backup notification: $uploadError');
-      }
+      // Local save already succeeded; the cloud result is reported separately
+      // through the CloudBackupBanner (progress, URL, or failure + retry).
+      _isExporting = false;
+      notifyListeners();
 
       // 3. Log Analytics event (Service 4)
       _analyticsService.logExportReport(
@@ -232,8 +231,11 @@ class ReportsViewModel extends ChangeNotifier {
         fileType: 'csv',
       );
 
-      _isExporting = false;
-      notifyListeners();
+      await backupToCloud(
+        fileName: fileName,
+        content: csvContent,
+        classCode: _classCode,
+      );
       return savedPath;
     } catch (e, st) {
       _crashlyticsService.recordError(e, st, reason: 'Export CSV failed');

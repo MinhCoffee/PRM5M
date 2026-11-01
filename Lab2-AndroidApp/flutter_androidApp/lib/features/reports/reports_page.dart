@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cloud_backup_banner.dart';
 import '../../core/widgets/state_view.dart';
 import '../../services/attendance_stats_service.dart';
 import 'viewmodel/reports_viewmodel.dart';
@@ -129,6 +130,7 @@ class _ReportsPageState extends State<ReportsPage> {
           ],
         ),
         const SizedBox(height: 18),
+        CloudBackupBanner(viewModel: widget.viewModel),
 
         // Filter Bar
         Card(

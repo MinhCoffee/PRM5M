@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -22,21 +22,36 @@ class StorageUploadResult {
   });
 }
 
+enum StorageFailureKind { notSignedIn, permissionDenied, network, unknown }
+
+/// Upload/list failure with a message that is safe to show to the user.
+class StorageFailure implements Exception {
+  final StorageFailureKind kind;
+  final String userMessage;
+  final Object? cause;
+
+  const StorageFailure(this.kind, this.userMessage, {this.cause});
+
+  @override
+  String toString() => 'StorageFailure(${kind.name}): $userMessage';
+}
+
 abstract interface class IStorageService {
+  /// Uploads a CSV report to `reports/{uid}/{fileName}`.
+  /// [onProgress] receives values in 0.0..1.0 while bytes are transferred.
+  /// Throws [StorageFailure]; never fabricates a download URL.
   Future<StorageUploadResult> uploadReport({
     required String fileName,
     required String content,
     required String classCode,
-    String? uploaderEmail,
-    String? uid,
+    void Function(double progress)? onProgress,
   });
 
+  /// Lists the signed-in user's real files in Cloud Storage.
   Future<List<StorageUploadResult>> getUploadedReports();
 }
 
 class FirebaseStorageService implements IStorageService {
-  final List<StorageUploadResult> _localUploadHistory = [];
-
   bool get _isFirebaseReady {
     try {
       return Firebase.apps.isNotEmpty;
@@ -45,87 +60,115 @@ class FirebaseStorageService implements IStorageService {
     }
   }
 
+  String _requireUid() {
+    if (!_isFirebaseReady) {
+      throw const StorageFailure(
+        StorageFailureKind.unknown,
+        'Firebase chưa được khởi tạo, không thể tải lên Cloud Storage.',
+      );
+    }
+    final uid = fb_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw const StorageFailure(
+        StorageFailureKind.notSignedIn,
+        'Bạn cần đăng nhập để tải báo cáo lên Cloud Storage.',
+      );
+    }
+    return uid;
+  }
+
+  StorageFailure _map(Object e) {
+    if (e is StorageFailure) return e;
+    if (e is FirebaseException) {
+      switch (e.code) {
+        case 'unauthorized':
+        case 'unauthenticated':
+          return StorageFailure(
+            StorageFailureKind.permissionDenied,
+            'Không có quyền truy cập tệp này (storage.rules từ chối).',
+            cause: e,
+          );
+        case 'retry-limit-exceeded':
+        case 'network-request-failed':
+          return StorageFailure(
+            StorageFailureKind.network,
+            'Mất kết nối mạng, tải lên không hoàn tất. Kiểm tra mạng rồi thử lại.',
+            cause: e,
+          );
+      }
+    }
+    if (e is TimeoutException) {
+      return StorageFailure(
+        StorageFailureKind.network,
+        'Hết thời gian chờ khi tải lên. Kiểm tra mạng rồi thử lại.',
+        cause: e,
+      );
+    }
+    return StorageFailure(
+      StorageFailureKind.unknown,
+      'Tải lên thất bại: $e',
+      cause: e,
+    );
+  }
+
   @override
   Future<StorageUploadResult> uploadReport({
     required String fileName,
     required String content,
     required String classCode,
-    String? uploaderEmail,
-    String? uid,
+    void Function(double progress)? onProgress,
   }) async {
-    final bytes = utf8.encode(content).length;
+    final data = Uint8List.fromList(utf8.encode(content));
     final timestamp = DateTime.now();
 
-    // Lab 3 Security Rules requirement: match /reports/{uid}/{allPaths=**}
-    // Storage path MUST start with reports/$userUid/ to comply with authenticated uid check.
-    final currentUid = uid ??
-        fb_auth.FirebaseAuth.instance.currentUser?.uid ??
-        'public_reports';
-    final storagePath = 'reports/$currentUid/$fileName';
-
-    String downloadUrl =
-        'https://firebasestorage.googleapis.com/v0/b/fap-attendance-85250.firebasestorage.app/o/${Uri.encodeComponent(storagePath)}?alt=media';
-
-    FirebaseEvidenceLogger.log(
-      service: 'Cloud Storage',
-      action: 'Uploading file to storage bucket',
-      payload: {
-        'path': storagePath,
-        'fileName': fileName,
-        'bytes': bytes,
-        'classCode': classCode,
-        'uid': currentUid,
-        'uploader': uploaderEmail ?? 'authenticated_user',
-      },
-    );
-
     try {
-      if (_isFirebaseReady) {
-        try {
-          final storageRef = FirebaseStorage.instance.ref().child(storagePath);
-          final uploadTask = await storageRef.putString(
-            content,
-            format: PutStringFormat.raw,
-            metadata: SettableMetadata(
-              contentType: 'text/csv',
-              customMetadata: {
-                'classCode': classCode,
-                'uploader': uploaderEmail ?? '',
-                'uploadedAt': timestamp.toIso8601String(),
-              },
-            ),
-          );
-          downloadUrl = await uploadTask.ref.getDownloadURL();
-        } catch (storageError) {
-          debugPrint('Firebase Storage SDK upload notice: $storageError');
-        }
+      final uid = _requireUid();
+      // Must match storage.rules: match /reports/{uid}/{allPaths=**}
+      final storagePath = 'reports/$uid/$fileName';
 
-        // Keep audit record in Firestore as well for console visibility
-        try {
-          await FirebaseFirestore.instance.collection('storage_reports').add({
-            'fileName': fileName,
-            'storagePath': storagePath,
-            'downloadUrl': downloadUrl,
-            'bytes': bytes,
+      FirebaseEvidenceLogger.log(
+        service: 'Cloud Storage',
+        action: 'Uploading file to storage bucket',
+        payload: {
+          'path': storagePath,
+          'bytes': data.length,
+          'classCode': classCode,
+        },
+      );
+
+      final ref = FirebaseStorage.instance.ref(storagePath);
+      final task = ref.putData(
+        data,
+        SettableMetadata(
+          contentType: 'text/csv',
+          customMetadata: {
             'classCode': classCode,
-            'uid': currentUid,
-            'uploader': uploaderEmail ?? '',
-            'uploadedAt': FieldValue.serverTimestamp(),
-          });
-        } catch (e) {
-          debugPrint('Firestore upload record notification error: $e');
-        }
-      }
+            'uploadedAt': timestamp.toIso8601String(),
+          },
+        ),
+      );
 
+      final sub = task.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0) {
+          onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+        }
+      });
+
+      try {
+        await task.timeout(const Duration(seconds: 60));
+      } finally {
+        await sub.cancel();
+      }
+      onProgress?.call(1.0);
+
+      final downloadUrl = await ref.getDownloadURL();
       final result = StorageUploadResult(
         fileName: fileName,
         storagePath: storagePath,
         downloadUrl: downloadUrl,
-        bytes: bytes,
+        bytes: data.length,
         uploadedAt: timestamp,
       );
-
-      _localUploadHistory.insert(0, result);
 
       FirebaseEvidenceLogger.log(
         service: 'Cloud Storage',
@@ -133,26 +176,46 @@ class FirebaseStorageService implements IStorageService {
         payload: {
           'downloadUrl': downloadUrl,
           'path': storagePath,
-          'sizeBytes': bytes,
+          'sizeBytes': data.length,
         },
         isSuccess: true,
       );
-
       return result;
     } catch (e) {
+      final failure = _map(e);
       FirebaseEvidenceLogger.log(
         service: 'Cloud Storage',
-        action: 'Upload failed',
-        payload: {'fileName': fileName, 'error': e.toString()},
+        action: 'Upload failed (${failure.kind.name})',
+        payload: {'fileName': fileName},
         isSuccess: false,
-        errorMessage: e.toString(),
+        errorMessage: failure.userMessage,
       );
-      rethrow;
+      throw failure;
     }
   }
 
   @override
   Future<List<StorageUploadResult>> getUploadedReports() async {
-    return List.unmodifiable(_localUploadHistory);
+    try {
+      final uid = _requireUid();
+      final listing = await FirebaseStorage.instance.ref('reports/$uid').listAll();
+      final results = <StorageUploadResult>[];
+      for (final item in listing.items.take(50)) {
+        final meta = await item.getMetadata();
+        results.add(
+          StorageUploadResult(
+            fileName: item.name,
+            storagePath: item.fullPath,
+            downloadUrl: await item.getDownloadURL(),
+            bytes: meta.size ?? 0,
+            uploadedAt: meta.timeCreated ?? DateTime.now(),
+          ),
+        );
+      }
+      results.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+      return results;
+    } catch (e) {
+      throw _map(e);
+    }
   }
 }

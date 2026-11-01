@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/cloud_backup_banner.dart';
 import '../../core/widgets/state_view.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../services/google_sheet_service.dart';
@@ -176,6 +177,7 @@ class _ExportPageState extends State<ExportPage> {
           ],
         ),
         const SizedBox(height: 18),
+        CloudBackupBanner(viewModel: widget.viewModel),
 
         // Filter Bar
         Card(
