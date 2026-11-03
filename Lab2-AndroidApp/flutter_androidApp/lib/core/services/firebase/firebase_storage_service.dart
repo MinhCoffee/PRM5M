@@ -156,6 +156,10 @@ class FirebaseStorageService implements IStorageService {
 
       try {
         await task.timeout(const Duration(seconds: 60));
+      } on TimeoutException {
+        // timeout() does not stop the transfer; cancel so a retry cannot race it.
+        await task.cancel();
+        rethrow;
       } finally {
         await sub.cancel();
       }
