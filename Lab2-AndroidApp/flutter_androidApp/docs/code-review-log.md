@@ -39,7 +39,7 @@ Tool: Claude Code `/code-review` (effort medium), diff `main..lab3-firebase`.
 GitHub Copilot was requested on PR #1 but did not review it ("insufficient
 remaining quota"), and PR #1 was merged before a review ran, so this review ran
 locally on the three follow-up commits (b7059aa, aac0950, 5495b40).
-PR: [... new PR link once opened ...]   Date: 2026-11-03
+PR: https://github.com/MinhCoffee/PRM5M/pull/2   Date: 2026-11-03
 
 | # | Category | File:line | Finding (tool output, summarised) | Decision | Technical reason | Commit |
 |---|---|---|---|---|---|---|
