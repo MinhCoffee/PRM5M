@@ -100,8 +100,21 @@ class GoogleSheetService {
   bool get isLive => _isLive;
   String? get lastError => _lastError;
 
-  GoogleSheetService([String? customSpreadsheetId]) {
+  /// Email of the account the app is signed in with (Firebase Auth). On
+  /// Android the Sheets client must use this same Google account.
+  final String? Function()? _expectedAccountEmail;
+
+  GoogleSheetService([
+    String? customSpreadsheetId,
+    String? Function()? expectedAccountEmail,
+  ]) : _expectedAccountEmail = expectedAccountEmail {
     _spreadsheetId = customSpreadsheetId ?? _readEnv('GOOGLE_SPREADSHEET_ID');
+  }
+
+  bool _matchesExpectedAccount(GoogleSignInAccount account) {
+    final expected = _expectedAccountEmail?.call()?.trim().toLowerCase();
+    if (expected == null || expected.isEmpty) return true;
+    return account.email.trim().toLowerCase() == expected;
   }
 
   String? _readEnv(String key) {
@@ -900,9 +913,29 @@ class GoogleSheetService {
   /// Android: native Google account picker (no localhost callback needed).
   Future<auth.AuthClient> _requestAndroidClient() async {
     await _ensureGoogleSignIn();
-    final account = await GoogleSignIn.instance.authenticate(
+    // Firebase Auth has normally just signed this user in, so reuse that
+    // account silently. Calling authenticate() here would open a second
+    // account chooser (and on every cold start with a cached session).
+    GoogleSignInAccount? account;
+    try {
+      account = await GoogleSignIn.instance.attemptLightweightAuthentication();
+    } catch (e) {
+      debugPrint('Silent Google sign-in unavailable: $e');
+    }
+    // The device may still hold a different, previously used Google account.
+    if (account != null && !_matchesExpectedAccount(account)) {
+      debugPrint('Silent Google account differs from the signed-in user.');
+      account = null;
+    }
+    account ??= await GoogleSignIn.instance.authenticate(
       scopeHint: _sheetScopes,
     );
+    if (!_matchesExpectedAccount(account)) {
+      throw const GoogleSheetException(
+        'Tài khoản Google được chọn khác tài khoản đã đăng nhập. '
+        'Hãy chọn đúng tài khoản đã đăng nhập vào ứng dụng.',
+      );
+    }
     final authorization =
         await account.authorizationClient.authorizationForScopes(
           _sheetScopes,

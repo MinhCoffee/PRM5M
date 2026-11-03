@@ -126,6 +126,24 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Card heading whose text wraps instead of overflowing on narrow screens.
+  Widget _cardTitle(
+    BuildContext context,
+    IconData icon,
+    Color color,
+    String text,
+  ) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.titleLarge),
+          ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -144,12 +162,44 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildContent(BuildContext context, SettingsData data) {
     final isSaving = widget.viewModel.isSaving;
     final isSeeding = widget.viewModel.isSeeding;
+    final narrow = MediaQuery.sizeOf(context).width < 700;
+
+    final warnField = TextField(
+      controller: _warnController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Ngưỡng cảnh báo Warning (%)',
+        hintText: '15.0',
+      ),
+    );
+    final banField = TextField(
+      controller: _banController,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(
+        labelText: 'Ngưỡng cấm thi Banned (%)',
+        hintText: '20.0',
+      ),
+    );
+    final saveButton = FilledButton.icon(
+      onPressed: isSaving ? null : _handleSave,
+      icon: isSaving
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(Colors.white),
+              ),
+            )
+          : const Icon(Icons.save_outlined),
+      label: Text(isSaving ? 'Đang lưu...' : 'Lưu cài đặt'),
+    );
 
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(narrow ? 16 : 24),
           children: [
             Text('Cài đặt hệ thống',
                 style: Theme.of(context).textTheme.headlineLarge),
@@ -167,66 +217,33 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.tune, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Ngưỡng cảnh báo chuyên cần (Remote Config)',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
+                    _cardTitle(
+                      context,
+                      Icons.tune,
+                      AppColors.primary,
+                      'Ngưỡng cảnh báo chuyên cần (Remote Config)',
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Các giá trị này được đồng bộ từ Firebase Remote Config và áp dụng trên tất cả màn hình: Trang chủ, Lớp học, Điểm danh, Báo cáo và Trợ lý AI.',
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _warnController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Ngưỡng cảnh báo Warning (%)',
-                              hintText: '15.0',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _banController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Ngưỡng cấm thi Banned (%)',
-                              hintText: '20.0',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: isSaving ? null : _handleSave,
-                          icon: isSaving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation(Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.save_outlined),
-                          label: Text(isSaving ? 'Đang lưu...' : 'Lưu cài đặt'),
-                        ),
-                      ],
-                    ),
+                    if (narrow) ...[
+                      warnField,
+                      const SizedBox(height: 12),
+                      banField,
+                      const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: saveButton),
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(child: warnField),
+                          const SizedBox(width: 12),
+                          Expanded(child: banField),
+                          const SizedBox(width: 12),
+                          saveButton,
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -240,16 +257,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.science_outlined,
-                            color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Tạo dữ liệu mẫu (Seed Data Generator)',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
+                    _cardTitle(
+                      context,
+                      Icons.science_outlined,
+                      AppColors.primary,
+                      'Tạo dữ liệu mẫu (Seed Data Generator)',
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -289,16 +301,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.bug_report_outlined,
-                            color: AppColors.error),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Kiểm thử Crashlytics (Bằng chứng Lab)',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ],
+                    _cardTitle(
+                      context,
+                      Icons.bug_report_outlined,
+                      AppColors.error,
+                      'Kiểm thử Crashlytics (Bằng chứng Lab)',
                     ),
                     const SizedBox(height: 8),
                     const Text(

@@ -33,22 +33,31 @@ finding to the commit that fixed it.
 | S11 | UX | `settings_page.dart` | Crash button fired immediately and claimed success | Accept | Confirmation dialog; guide forbids accidental crashes | 81636bc |
 | S12 | Correctness | `login_page.dart:205` | Row overflow on narrow phones | Accept | `Flexible` text | 66c1502 |
 
-## 2. Findings from the PR review tool (fill in)
+## 2. Findings from the PR review tool
 
-Tool: __________  PR: __________  Date: __________
+Tool: Claude Code `/code-review` (effort medium), diff `main..lab3-firebase`.
+GitHub Copilot was requested on PR #1 but did not review it ("insufficient
+remaining quota"), and PR #1 was merged before a review ran, so this review ran
+locally on the three follow-up commits (b7059aa, aac0950, 5495b40).
+PR: https://github.com/MinhCoffee/PRM5M/pull/2   Date: 2026-11-03
 
-| # | Category | File:line | Tool comment (quote) | Decision (accept / modify / reject) | Technical reason | Commit |
+| # | Category | File:line | Finding (tool output, summarised) | Decision | Technical reason | Commit |
 |---|---|---|---|---|---|---|
-| 1 | | | | | | |
-| 2 | | | | | | |
-| 3 | | | | | | |
-| 4 | | | | | | |
-| 5 | | | | | | |
+| 1 | Reliability | `lib/core/models/cloud_backup_mixin.dart:57` | An upload can outlive its route; progress/completion call `notifyListeners()` on a disposed view model ("ChangeNotifier used after being disposed") | Accept | Provider disposes the view model on route exit while the upload continues | d8c0dbb |
+| 2 | Correctness | `lib/core/models/cloud_backup_mixin.dart:57` | No re-entrancy guard: a second Export tap overwrites `_pending` and interleaves progress, so Retry can resend the wrong file | Accept | Early return while `isBackingUp` | d8c0dbb |
+| 3 | Reliability | `lib/core/services/firebase/firebase_storage_service.dart:138` | `task.timeout(60s)` throws but does not stop the transfer; a retry races the first upload to the same path | Accept | Cancel the task on `TimeoutException` | 03a2251 |
+| 4 | Security | `lib/core/services/firebase/firebase_messaging_service.dart:476` | `routeForNotification` trusts any `data['route']` starting with `/`; `/login?logout=1` signs the user out on tap | Modify | Rejecting `//` and `/login*` closes the reported case; a full allow-list of known routes would be stricter but changes behaviour | f6c4406 |
+| 5 | Correctness | `firebase_messaging_service.dart:628` | `_persist()` rewrites the whole in-memory history and can drop pushes saved by the background isolate | Accept, not fixed yet | Needs merge-on-persist, a behaviour change beyond a local patch | [...] |
+| 6 | Security / identity | `lib/services/google_sheet_service.dart:903` | `attemptLightweightAuthentication()` may return a cached account different from the one Firebase just signed in with | Accept | Compare the account email with the Firebase user; fall back to the chooser, then fail with a clear message; introduced by aac0950 | 49a80ec |
+| 7 | Performance | `lib/features/home/viewmodel/home_viewmodel.dart:63` | `loadDashboard` awaits `fetchAndActivate()` (10s timeout) before loading stats | Accept, not fixed yet | Fetch in parallel or in the background | [...] |
+| 8 | Maintainability | `android/app/google-services.json` | Untracked and not git-ignored; a blanket `git add` could commit it | Accept | CLAUDE.md says the file is added manually per developer | 0d669a3 |
+| 9 | Maintainability | `windows/flutter/generated_plugins.cmake`, macOS registrant | `flutter pub get` rewrites generated registrants for platforms nobody builds | Accept | Reverted with `git checkout`; no code change | (none) |
 
-Categories used (>= 2): ______________________
+Categories used (>= 2): Reliability, Correctness, Security, Performance, Maintainability.
 
 ## 3. Summary for the report
 
-* Findings: ___ total; accepted ___, modified ___, rejected ___.
-* Fixed with commits: ___ (>= 3 required).
-* One finding you rejected and why: ______________________________________
+* Findings: 9 total; accepted 8, modified 1 (#4), rejected 0.
+* Fixed with commits: 6 findings (#1, #2, #3, #4, #6, #8) in 5 commits (>= 3 required). #9 needed no commit.
+* Open (accepted, not yet fixed): #5, #7.
+* One finding you rejected and why: [... none rejected so far; fill in if you reject one ...]

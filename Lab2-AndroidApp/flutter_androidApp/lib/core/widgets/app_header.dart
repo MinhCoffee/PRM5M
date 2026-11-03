@@ -134,11 +134,14 @@ class AppHeader extends StatelessWidget {
                       );
                     },
                   ),
-                  IconButton(
-                    onPressed: () => context.go('/login?logout=1'),
-                    icon: const Icon(Icons.logout_outlined),
-                    tooltip: 'Đăng xuất',
-                  ),
+                  // On phones, logout lives in the Profile page to keep the
+                  // header uncluttered.
+                  if (!isMobile)
+                    IconButton(
+                      onPressed: () => context.go('/login?logout=1'),
+                      icon: const Icon(Icons.logout_outlined),
+                      tooltip: 'Đăng xuất',
+                    ),
                 ],
               ),
             ),

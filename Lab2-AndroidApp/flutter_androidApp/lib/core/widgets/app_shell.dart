@@ -23,7 +23,7 @@ class AppShell extends StatelessWidget {
               children: [
                 const AppHeader(),
                 if (!isMobile) const NavBar(),
-                const BreadcrumbBar(),
+                if (!isMobile) const BreadcrumbBar(),
                 Expanded(child: child),
                 if (!isMobile) const AppFooter(),
               ],

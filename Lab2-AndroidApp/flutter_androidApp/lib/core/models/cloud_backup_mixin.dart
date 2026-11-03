@@ -22,6 +22,19 @@ mixin CloudBackupMixin on ChangeNotifier {
   String? get backupDownloadUrl => _backupDownloadUrl;
 
   _PendingBackup? _pending;
+  bool _backupDisposed = false;
+
+  @override
+  void notifyListeners() {
+    // An upload can outlive its route; never notify a disposed view model.
+    if (!_backupDisposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _backupDisposed = true;
+    super.dispose();
+  }
   bool get canRetryBackup => _backupFailed && _pending != null;
 
   /// Returns true when the file is really in Cloud Storage.
@@ -30,6 +43,8 @@ mixin CloudBackupMixin on ChangeNotifier {
     required String content,
     required String classCode,
   }) async {
+    // A second tap while uploading would interleave progress and clobber _pending.
+    if (isBackingUp) return false;
     _pending = _PendingBackup(fileName, content, classCode);
     _backupProgress = 0;
     _backupFailed = false;

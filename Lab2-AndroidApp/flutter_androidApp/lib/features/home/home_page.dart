@@ -236,42 +236,6 @@ class _HomePageState extends State<HomePage> {
             );
           }),
 
-        const SizedBox(height: 28),
-
-        // Quick User Flow Guide
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.auto_stories_outlined, color: AppColors.primary),
-                    SizedBox(width: 8),
-                    Text(
-                      'Hướng dẫn 3 luồng chức năng (User Flows)',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _flowStep(
-                  '1. Authentication',
-                  'Đăng nhập tài khoản Google @fpt.edu.vn, cấp quyền truy cập hệ thống.',
-                ),
-                _flowStep(
-                  '2. Take Attendance',
-                  'Mở ca học từ danh sách, tích chọn Có mặt/Vắng mặt, Lưu nháp hoặc Nộp chính thức.',
-                ),
-                _flowStep(
-                  '3. View Reports & Export',
-                  'Lọc báo cáo theo học kỳ/môn/lớp, theo dõi tỷ lệ vắng và xuất tệp CSV/lưu trữ đám mây.',
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -342,31 +306,6 @@ class _HomePageState extends State<HomePage> {
             fontWeight: FontWeight.bold,
             fontSize: 12,
           ),
-        ),
-      );
-
-  Widget _flowStep(String title, String desc) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.check_circle_outline, size: 16, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: RichText(
-                text: TextSpan(
-                  style: const TextStyle(fontSize: 13, color: AppColors.onSurface),
-                  children: [
-                    TextSpan(
-                      text: '$title: ',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    TextSpan(text: desc),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ),
       );
 

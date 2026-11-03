@@ -53,13 +53,17 @@ class ServiceLocator {
   });
 
   factory ServiceLocator._default() {
-    final sheetService = GoogleSheetService();
+    final auth = FirebaseAuthService();
+    // Sheets access must use the same Google account Firebase signed in with.
+    final sheetService = GoogleSheetService(
+      null,
+      () => auth.currentUser?.email,
+    );
     final repo = GoogleSheetsAttendanceRepository(sheetService);
     final stats = AttendanceStatsService(sheetService);
     final file = FileService();
     final notify = AttendanceNotificationService();
 
-    final auth = FirebaseAuthService();
     final storage = FirebaseStorageService();
     final messaging = FirebaseMessagingService();
     final analytics = FirebaseAnalyticsService();
