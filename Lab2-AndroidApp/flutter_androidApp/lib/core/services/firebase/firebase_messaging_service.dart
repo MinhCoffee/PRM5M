@@ -83,7 +83,13 @@ class PushNotificationMessage {
 /// to the home screen so a tap never dead-ends.
 String routeForNotification(PushNotificationMessage message) {
   final explicit = message.data['route']?.toString();
-  if (explicit != null && explicit.startsWith('/')) return explicit;
+  // Only plain in-app paths from a remote payload; never `//host` or login/logout.
+  if (explicit != null &&
+      explicit.startsWith('/') &&
+      !explicit.startsWith('//') &&
+      !explicit.startsWith('/login')) {
+    return explicit;
+  }
 
   switch (message.data['type']?.toString()) {
     case 'risk_alert':
