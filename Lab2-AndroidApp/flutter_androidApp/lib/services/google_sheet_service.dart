@@ -900,7 +900,16 @@ class GoogleSheetService {
   /// Android: native Google account picker (no localhost callback needed).
   Future<auth.AuthClient> _requestAndroidClient() async {
     await _ensureGoogleSignIn();
-    final account = await GoogleSignIn.instance.authenticate(
+    // Firebase Auth has normally just signed this user in, so reuse that
+    // account silently. Calling authenticate() here would open a second
+    // account chooser (and on every cold start with a cached session).
+    GoogleSignInAccount? account;
+    try {
+      account = await GoogleSignIn.instance.attemptLightweightAuthentication();
+    } catch (e) {
+      debugPrint('Silent Google sign-in unavailable: $e');
+    }
+    account ??= await GoogleSignIn.instance.authenticate(
       scopeHint: _sheetScopes,
     );
     final authorization =
