@@ -48,7 +48,7 @@ PR: [... new PR link once opened ...]   Date: 2026-11-03
 | 3 | Reliability | `lib/core/services/firebase/firebase_storage_service.dart:138` | `task.timeout(60s)` throws but does not stop the transfer; a retry races the first upload to the same path | Accept | Cancel the task on `TimeoutException` | 03a2251 |
 | 4 | Security | `lib/core/services/firebase/firebase_messaging_service.dart:476` | `routeForNotification` trusts any `data['route']` starting with `/`; `/login?logout=1` signs the user out on tap | Modify | Rejecting `//` and `/login*` closes the reported case; a full allow-list of known routes would be stricter but changes behaviour | f6c4406 |
 | 5 | Correctness | `firebase_messaging_service.dart:628` | `_persist()` rewrites the whole in-memory history and can drop pushes saved by the background isolate | Accept, not fixed yet | Needs merge-on-persist, a behaviour change beyond a local patch | [...] |
-| 6 | Security / identity | `lib/services/google_sheet_service.dart:903` | `attemptLightweightAuthentication()` may return a cached account different from the one Firebase just signed in with | Accept, not fixed yet | Needs an account-match check against the Firebase user; introduced by aac0950 | [...] |
+| 6 | Security / identity | `lib/services/google_sheet_service.dart:903` | `attemptLightweightAuthentication()` may return a cached account different from the one Firebase just signed in with | Accept | Compare the account email with the Firebase user; fall back to the chooser, then fail with a clear message; introduced by aac0950 | 49a80ec |
 | 7 | Performance | `lib/features/home/viewmodel/home_viewmodel.dart:63` | `loadDashboard` awaits `fetchAndActivate()` (10s timeout) before loading stats | Accept, not fixed yet | Fetch in parallel or in the background | [...] |
 | 8 | Maintainability | `android/app/google-services.json` | Untracked and not git-ignored; a blanket `git add` could commit it | Accept | CLAUDE.md says the file is added manually per developer | 0d669a3 |
 | 9 | Maintainability | `windows/flutter/generated_plugins.cmake`, macOS registrant | `flutter pub get` rewrites generated registrants for platforms nobody builds | Accept | Reverted with `git checkout`; no code change | (none) |
@@ -58,6 +58,6 @@ Categories used (>= 2): Reliability, Correctness, Security, Performance, Maintai
 ## 3. Summary for the report
 
 * Findings: 9 total; accepted 8, modified 1 (#4), rejected 0.
-* Fixed with commits: 5 findings (#1, #2, #3, #4, #8) in 4 commits (>= 3 required). #9 needed no commit.
-* Open (accepted, not yet fixed): #5, #6, #7.
+* Fixed with commits: 6 findings (#1, #2, #3, #4, #6, #8) in 5 commits (>= 3 required). #9 needed no commit.
+* Open (accepted, not yet fixed): #5, #7.
 * One finding you rejected and why: [... none rejected so far; fill in if you reject one ...]
