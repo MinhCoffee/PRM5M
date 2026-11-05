@@ -31,7 +31,7 @@ sample data seeded (Settings -> *Seed sample data*).
 | TC-05 | Take Attendance (submit) | TC-04 state | Tap **Submit** | Status chip becomes "submitted/Đã nộp"; Home "Ca đang lưu nháp" decreases by 1; re-submitting does not create duplicate rows |
 | TC-06 | Take Attendance (**error recovery**) | Signed in | Enable airplane mode -> change statuses -> Save | Error message "Lỗi kết nối khi lưu…"; selections unchanged; **Retry** visible; disable airplane mode -> Retry -> success |
 | TC-07 | View Reports (happy) | Data seeded | Reports -> choose class `SE1801` | Table/cards list students; absent % values equal the Home/AI Assistant numbers for the same student |
-| TC-08 | View Reports + Storage | Online, signed in | Reports -> **Export CSV** -> save | Local file saved; banner shows progress then "Đã sao lưu…reports/<uid>/…"; URL copyable; file exists in Console |
+| TC-08 | View Reports + Storage | Online, signed in | Reports -> **Export CSV** -> save | Local file saved; banner shows progress then "Đã sao lưu…reports/<uid>/…"; URL copyable; file exists in Cloudinary Media Library |
 | TC-09 | **Native Android** | Fresh install | Launch app; Android 13+ permission dialog for notifications | System dialog appears; **Allow** -> Notification centre has no "từ chối" banner; **Deny** (second run) -> banner "đã từ chối quyền" shown |
 | TC-10 | FCM (3 states) | Token copied from Profile | Send Console test message with `data.route=/reports` while app is foreground, background, terminated | Foreground: item appears in Notification centre + badge; background/terminated: tapping the system notification opens **Reports** |
 | TC-11 | Remote Config (observable change) | Home shows banner and >1 session | Console: `show_banner=false`, `max_items=1` -> Publish -> Home refresh | Banner hidden; list shows 1 session and text `1/N ca (giới hạn max_items = 1)` |
@@ -42,7 +42,7 @@ sample data seeded (Settings -> *Seed sample data*).
 | Service | Error case | Covered by |
 |---|---|---|
 | Authentication | User cancels / offline | TC-02, evidence checklist §1 |
-| Cloud Storage | Offline upload and cross-user access denied | TC-08 variant (airplane mode) + Rules Playground |
+| Cloud Storage | Offline upload and wrong preset rejected | TC-08 variant (airplane mode) + invalid preset in .env |
 | Cloud Messaging | Permission denied | TC-09 (Deny run) |
 | Analytics | Offline: app keeps working, events flush later | exploratory + checklist §4 |
 | Crashlytics | Handled error shows a user-facing message | TC-06 (save error is recorded + shown) |

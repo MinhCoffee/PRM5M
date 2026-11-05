@@ -42,18 +42,22 @@ After saving, open the Google provider again and copy the **Web client ID**
 GOOGLE_WEB_CLIENT_ID=<web client id>.apps.googleusercontent.com
 ```
 
-## 3. Cloud Storage + rules
+## 3. Cloud Storage (Cloudinary free plan)
 
-1. Console -> Storage -> Get started.
-2. Deploy the committed rules (`firebase/storage.rules`):
-   ```powershell
-   npm i -g firebase-tools
-   firebase login
-   firebase use <your-project-id>
-   firebase deploy --only storage
+Firebase Storage needs the paid Blaze plan, so report uploads go to Cloudinary
+(approved by the lecturer). `firebase/storage.rules` and `FirebaseStorageService`
+are kept only as the original Firebase implementation and are not wired in.
+
+1. Create a free Cloudinary account and note the **Cloud name** (Settings -> API Keys).
+2. Settings -> Upload -> Upload presets -> Add: **Signing mode = Unsigned**, e.g. `fap_reports_unsigned`.
+3. Add to `.env` (git-ignored):
    ```
-   Or paste the file into Storage -> Rules -> Publish.
-3. Verify: the rules must **not** contain `allow read, write: if true`.
+   CLOUDINARY_CLOUD_NAME=<cloud name>
+   CLOUDINARY_UPLOAD_PRESET=<preset name>
+   ```
+4. Files are uploaded as raw assets to `reports/<firebase-uid>/<timestamp>_<file>.csv`.
+   No API secret is stored in the app. The upload history shown in Profile is kept
+   locally per user (Cloudinary listing needs the secret).
 
 ## 4. Cloud Messaging
 

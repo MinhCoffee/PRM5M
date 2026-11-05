@@ -18,10 +18,11 @@ Test device/emulator: ______________________  Android version: ______  Date: ___
 ## 2. Cloud Storage
 - [ ] Reports -> Export CSV -> progress bar visible in banner
 - [ ] Final download URL shown (copy button)
-- [ ] Console -> Storage -> `reports/<uid>/<file>.csv` exists
-- [ ] `firebase/storage.rules` deployed; screenshot of Rules tab (no `if true`)
+- [ ] Cloudinary Console -> Media Library -> `reports/<uid>/<timestamp>_<file>.csv` exists (screenshot)
+- [ ] Open the shown download URL in a browser: the CSV downloads
+- [ ] Console log line `Cloud Storage (Cloudinary) ... Upload completed successfully`
 - [ ] **Error case A**: airplane mode while uploading -> failure message + *Thử lại tải lên*
-- [ ] **Error case B**: Rules Playground (or a second account) cannot read `reports/<other-uid>/...`
+- [ ] **Error case B**: temporarily wrong preset name in `.env` -> clear error, no fake URL
 
 ## 3. Cloud Messaging
 - [ ] Profile shows the real FCM token

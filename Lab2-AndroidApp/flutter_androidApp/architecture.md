@@ -43,7 +43,7 @@ rendered by `core/widgets/state_view.dart`, so loading, empty and error states l
 | # | Service | Interface | Implementation | Used by |
 |---|---|---|---|---|
 | 1 | Authentication | `IAuthService` | `FirebaseAuthService` (Google Sign-In -> `signInWithCredential`) | `AuthViewModel`, `ProfileViewModel`, router guard |
-| 2 | Cloud Storage | `IStorageService` | `FirebaseStorageService` -> `reports/{uid}/{file}` | `ReportsViewModel`, `ExportViewModel` (via `CloudBackupMixin`) |
+| 2 | Cloud Storage | `IStorageService` | `CloudinaryStorageService` -> unsigned upload to `reports/{uid}/{ts}_{file}` (Cloudinary free plan) | `ReportsViewModel`, `ExportViewModel` (via `CloudBackupMixin`) |
 | 3 | Cloud Messaging | `IMessagingService` | `FirebaseMessagingService` | `NotificationsViewModel`, header badge, router |
 | 4 | Analytics | `IAnalyticsService` | `FirebaseAnalyticsService` | all ViewModels |
 | 5 | Crashlytics | `ICrashlyticsService` | `FirebaseCrashlyticsService` + global hooks in `main.dart` | all ViewModels, Settings test buttons |
@@ -79,8 +79,9 @@ Routes: `/login`, `/home`, `/take-attendance`, `/attendance/:sessionId`,
   `GoogleSignInBootstrap` (single `GoogleSignIn.initialize()`) -> Firebase
   credential -> `currentUser` -> Sheets connection -> `/home`.
 * **Storage**: Export/Reports -> CSV saved locally -> `CloudBackupMixin.backupToCloud()`
-  -> `putData` with `snapshotEvents` progress -> real `getDownloadURL()`; failures
-  surface in `CloudBackupBanner` with *Retry*. Rules: `firebase/storage.rules`.
+  -> multipart POST to Cloudinary (unsigned preset) -> real `secure_url`; failures
+  surface in `CloudBackupBanner` with *Retry*. History is stored locally per user.
+  (Firebase Storage needs Blaze; `FirebaseStorageService` is kept but unused.)
 * **FCM**: `FirebaseMessagingService.initialize()` requests the Android 13+
   permission, then handles three states — foreground (`onMessage`), background
   tap (`onMessageOpenedApp`), terminated tap (`getInitialMessage`) — stores
