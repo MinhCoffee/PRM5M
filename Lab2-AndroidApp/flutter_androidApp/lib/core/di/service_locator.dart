@@ -1,5 +1,6 @@
 import '../services/firebase/firebase_auth_service.dart';
 import '../services/firebase/firebase_storage_service.dart';
+import '../services/cloudinary_storage_service.dart';
 import '../services/firebase/firebase_messaging_service.dart';
 import '../services/firebase/firebase_analytics_service.dart';
 import '../services/firebase/firebase_crashlytics_service.dart';
@@ -64,7 +65,8 @@ class ServiceLocator {
     final file = FileService();
     final notify = AttendanceNotificationService();
 
-    final storage = FirebaseStorageService();
+    // Firebase Storage needs the paid Blaze plan; Cloudinary free plan instead.
+    final IStorageService storage = CloudinaryStorageService();
     final messaging = FirebaseMessagingService();
     final analytics = FirebaseAnalyticsService();
     final crashlytics = FirebaseCrashlyticsService();
