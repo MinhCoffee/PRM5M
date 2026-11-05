@@ -170,7 +170,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Tích hợp 6 dịch vụ Firebase',
+                      'Tích hợp 6 dịch vụ đám mây',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ],
@@ -184,8 +184,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   AppColors.green,
                 ),
                 _serviceStatusItem(
-                  '2. Cloud Storage',
-                  'Lưu trữ file xuất báo cáo CSV/PDF lên Storage bucket',
+                  '2. Cloud Storage (Cloudinary)',
+                  'Lưu file báo cáo CSV đã xuất lên Cloudinary (gói miễn phí)',
                   'Sẵn sàng (${widget.viewModel.uploadedReportsCount} file đã đồng bộ)',
                   Icons.cloud_upload_outlined,
                   AppColors.primary,
