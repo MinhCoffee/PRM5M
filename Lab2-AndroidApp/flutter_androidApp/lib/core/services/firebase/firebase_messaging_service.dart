@@ -242,16 +242,41 @@ class FirebaseMessagingService implements IMessagingService {
     return true;
   }
 
-  Future<void> _persist() async {
-    _revision.value++;
+  /// Saves the history. Unless [replace] is true (clear), first merges in
+  /// pushes the background isolate wrote since we last loaded, so a persist
+  /// never drops them.
+  Future<void> _persist({bool replace = false}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (!replace) {
+        await prefs.reload();
+        final raw = prefs.getString(_historyKey);
+        if (raw != null) {
+          var added = false;
+          for (final e in (jsonDecode(raw) as List)) {
+            final stored =
+                PushNotificationMessage.fromJson(Map<String, dynamic>.from(e as Map));
+            if (!_history.any((m) => m.id == stored.id)) {
+              _history.add(stored);
+              added = true;
+            }
+          }
+          if (added) {
+            _history.sort((a, b) => b.sentAt.compareTo(a.sentAt));
+            if (_history.length > _maxHistory) {
+              _history.removeRange(_maxHistory, _history.length);
+            }
+          }
+        }
+      }
+      _revision.value++;
       await prefs.setString(
         _historyKey,
         jsonEncode(_history.map((m) => m.toJson()).toList()),
       );
     } catch (e) {
       debugPrint('Notification history persist error: $e');
+      _revision.value++;
     }
   }
 
@@ -422,7 +447,7 @@ class FirebaseMessagingService implements IMessagingService {
   @override
   Future<void> clearHistory() async {
     _history.clear();
-    await _persist();
+    await _persist(replace: true);
   }
 
   @override
