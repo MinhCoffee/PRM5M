@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../../../core/models/view_state.dart';
 import '../../../core/services/firebase/firebase_analytics_service.dart';
@@ -60,7 +62,10 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _remoteConfigService.fetchAndActivate();
+      // Remote Config (up to a 10s timeout when offline) must not delay the
+      // dashboard: fetch in parallel, show cached/default values now and
+      // re-apply once fresh values are activated.
+      final remoteFetch = _remoteConfigService.fetchAndActivate();
       await _statsService.load(force: force);
 
       final now = DateTime.now();
@@ -95,33 +100,50 @@ class HomeViewModel extends ChangeNotifier {
           .toSet()
           .length;
 
-      final announcement = _remoteConfigService.getString(
-        'portal_announcement',
-        'Kỳ Fall 2026: Vui lòng nộp điểm danh trước 23h59 hàng ngày để đồng bộ dữ liệu FAP.',
-      );
+      HomeDashboardData build() {
+        final announcement = _remoteConfigService.getString(
+          'portal_announcement',
+          'Kỳ Fall 2026: Vui lòng nộp điểm danh trước 23h59 hàng ngày để đồng bộ dữ liệu FAP.',
+        );
+        final showBanner = _remoteConfigService.getBool('show_banner', true);
+        final maxItems =
+            _remoteConfigService.getInt('max_items', 10).clamp(1, 100);
+        return HomeDashboardData(
+          todaySessions: todaySessions.take(maxItems).toList(),
+          totalTodaySessions: todaySessions.length,
+          showBanner: showBanner,
+          maxItems: maxItems,
+          overallRate: overallRate,
+          bannedStudentsCount: bannedStudentsCount,
+          draftSessionsCount: draftSessionsCount,
+          announcement: announcement,
+        );
+      }
 
-      final showBanner = _remoteConfigService.getBool('show_banner', true);
-      final maxItems = _remoteConfigService.getInt('max_items', 10).clamp(1, 100);
-
-      final dashboardData = HomeDashboardData(
-        todaySessions: todaySessions.take(maxItems).toList(),
-        totalTodaySessions: todaySessions.length,
-        showBanner: showBanner,
-        maxItems: maxItems,
-        overallRate: overallRate,
-        bannedStudentsCount: bannedStudentsCount,
-        draftSessionsCount: draftSessionsCount,
-        announcement: announcement,
-      );
-
+      final dashboardData = build();
       _state = ViewState.data(dashboardData);
       _analyticsService.logScreenView('home_dashboard');
       notifyListeners();
+
+      unawaited(remoteFetch.then((_) {
+        // Skip if the user left the screen or a newer load replaced this one.
+        if (_disposed || !identical(_state.data, dashboardData)) return;
+        _state = ViewState.data(build());
+        notifyListeners();
+      }));
     } catch (e, st) {
       _crashlyticsService.recordError(e, st, reason: 'Failed to load home dashboard');
       _state = ViewState.error('Không thể tải dữ liệu trang chủ: $e');
       notifyListeners();
     }
+  }
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   int _slotNumber(String slot) =>
