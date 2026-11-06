@@ -92,43 +92,53 @@ class _ReportsPageState extends State<ReportsPage> {
     final narrow = MediaQuery.sizeOf(context).width < 700;
     final isExporting = widget.viewModel.isExporting;
 
+    final exportButton = FilledButton.icon(
+      onPressed: isExporting ? null : _handleExport,
+      icon: isExporting
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(Colors.white),
+              ),
+            )
+          : const Icon(Icons.download_outlined),
+      label: Text(isExporting ? 'Đang xuất...' : 'Export CSV'),
+      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+    );
+    final headerText = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Báo cáo chuyên cần',
+            style: Theme.of(context).textTheme.headlineLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Thống kê tỷ lệ vắng và danh sách sinh viên cảnh báo theo lớp/môn.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+    // Phone: the description gets the full width and the button sits below it,
+    // instead of squeezing the text next to the button.
+    final filterWidth =
+        narrow ? (MediaQuery.sizeOf(context).width - 32 - 24 - 12) / 2 : 190.0;
+
     return ListView(
       padding: EdgeInsets.all(narrow ? 16 : 24),
       children: [
         // Header
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Báo cáo chuyên cần',
-                      style: Theme.of(context).textTheme.headlineLarge),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Thống kê tỷ lệ vắng và danh sách sinh viên cảnh báo theo lớp/môn.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: isExporting ? null : _handleExport,
-              icon: isExporting
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(Colors.white),
-                      ),
-                    )
-                  : const Icon(Icons.download_outlined),
-              label: Text(isExporting ? 'Đang xuất...' : 'Export CSV'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-            ),
-          ],
-        ),
+        if (narrow) ...[
+          headerText,
+          const SizedBox(height: 12),
+          Align(alignment: Alignment.centerLeft, child: exportButton),
+        ] else
+          Row(
+            children: [
+              Expanded(child: headerText),
+              exportButton,
+            ],
+          ),
         const SizedBox(height: 18),
         CloudBackupBanner(viewModel: widget.viewModel),
 
@@ -146,18 +156,21 @@ class _ReportsPageState extends State<ReportsPage> {
                   data.selectedSemester,
                   data.semesters,
                   (val) => widget.viewModel.setSemester(val!),
+                  filterWidth,
                 ),
                 _filterDropdown(
                   'Môn học',
                   data.selectedSubject,
                   data.subjects,
                   (val) => widget.viewModel.setSubject(val!),
+                  filterWidth,
                 ),
                 _filterDropdown(
                   'Lớp học',
                   data.selectedClass,
                   data.classes,
                   (val) => widget.viewModel.setClassCode(val!),
+                  filterWidth,
                 ),
                 TextButton.icon(
                   onPressed: () => widget.viewModel.resetFilters(),
@@ -287,9 +300,10 @@ class _ReportsPageState extends State<ReportsPage> {
     String value,
     List<String> values,
     ValueChanged<String?> onChanged,
+    double width,
   ) =>
       SizedBox(
-        width: 190,
+        width: width,
         child: DropdownButtonFormField<String>(
           isExpanded: true,
           initialValue: value,
