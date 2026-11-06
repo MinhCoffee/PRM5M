@@ -45,8 +45,8 @@ GOOGLE_WEB_CLIENT_ID=<web client id>.apps.googleusercontent.com
 ## 3. Cloud Storage (Cloudinary free plan)
 
 Firebase Storage needs the paid Blaze plan, so report uploads go to Cloudinary
-(approved by the lecturer). `firebase/storage.rules` and `FirebaseStorageService`
-are kept only as the original Firebase implementation and are not wired in.
+(approved by the lecturer). The old Firebase Storage implementation
+(`FirebaseStorageService`, `storage.rules`) and the `firebase_storage` dependency were removed.
 
 1. Create a free Cloudinary account and note the **Cloud name** (Settings -> API Keys).
 2. Settings -> Upload -> Upload presets -> Add: **Signing mode = Unsigned**, e.g. `fap_reports_unsigned`.

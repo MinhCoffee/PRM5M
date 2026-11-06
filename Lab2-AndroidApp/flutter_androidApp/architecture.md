@@ -81,7 +81,7 @@ Routes: `/login`, `/home`, `/take-attendance`, `/attendance/:sessionId`,
 * **Storage**: Export/Reports -> CSV saved locally -> `CloudBackupMixin.backupToCloud()`
   -> multipart POST to Cloudinary (unsigned preset) -> real `secure_url`; failures
   surface in `CloudBackupBanner` with *Retry*. History is stored locally per user.
-  (Firebase Storage needs Blaze; `FirebaseStorageService` is kept but unused.)
+  (Firebase Storage needs Blaze, so `FirebaseStorageService` and `firebase_storage` were removed; the `IStorageService` contract lives in `core/services/storage_service.dart`.)
 * **FCM**: `FirebaseMessagingService.initialize()` requests the Android 13+
   permission, then handles three states — foreground (`onMessage`), background
   tap (`onMessageOpenedApp`), terminated tap (`getInitialMessage`) — stores
@@ -105,7 +105,7 @@ End-to-end device tests are planned in `docs/artemis-test-plan.md`.
 
 ## Dependencies (`pubspec.yaml`)
 
-`firebase_core`, `firebase_auth`, `firebase_storage`, `firebase_messaging`,
+`firebase_core`, `firebase_auth`, `http` (Cloudinary), `firebase_messaging`,
 `firebase_analytics`, `firebase_crashlytics`, `firebase_remote_config`,
 `google_sign_in`, `provider`, `go_router`, `shared_preferences`, plus the
 Google Sheets stack that stores attendance data.

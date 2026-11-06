@@ -1,5 +1,5 @@
 import '../services/firebase/firebase_auth_service.dart';
-import '../services/firebase/firebase_storage_service.dart';
+import '../services/storage_service.dart';
 import '../services/cloudinary_storage_service.dart';
 import '../services/firebase/firebase_messaging_service.dart';
 import '../services/firebase/firebase_analytics_service.dart';

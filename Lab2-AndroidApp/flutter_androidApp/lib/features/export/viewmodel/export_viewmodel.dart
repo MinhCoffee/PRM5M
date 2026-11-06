@@ -4,7 +4,7 @@ import '../../../core/models/cloud_backup_mixin.dart';
 import '../../../core/models/view_state.dart';
 import '../../../core/services/firebase/firebase_analytics_service.dart';
 import '../../../core/services/firebase/firebase_crashlytics_service.dart';
-import '../../../core/services/firebase/firebase_storage_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../models/student.dart';
 import '../../../services/attendance_stats_service.dart';
 import '../../../services/file_service.dart';

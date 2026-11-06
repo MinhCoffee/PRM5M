@@ -9,8 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase/firebase_evidence_logger.dart';
-import 'firebase/firebase_storage_service.dart'
-    show IStorageService, StorageFailure, StorageFailureKind, StorageUploadResult;
+import 'storage_service.dart';
 
 /// Stores exported CSV reports in Cloudinary (free plan) instead of Firebase
 /// Storage, which needs the paid Blaze plan.

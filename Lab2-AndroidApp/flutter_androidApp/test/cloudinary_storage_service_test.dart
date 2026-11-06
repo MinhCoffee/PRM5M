@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_application_1/core/services/cloudinary_storage_service.dart';
-import 'package:flutter_application_1/core/services/firebase/firebase_storage_service.dart';
+import 'package:flutter_application_1/core/services/storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

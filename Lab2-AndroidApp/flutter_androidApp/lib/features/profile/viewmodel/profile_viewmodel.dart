@@ -6,7 +6,7 @@ import '../../../core/services/firebase/firebase_auth_service.dart';
 import '../../../core/services/firebase/firebase_crashlytics_service.dart';
 import '../../../core/services/firebase/firebase_messaging_service.dart';
 import '../../../core/services/firebase/firebase_remote_config_service.dart';
-import '../../../core/services/firebase/firebase_storage_service.dart';
+import '../../../core/services/storage_service.dart';
 
 class ProfileViewModel extends ChangeNotifier {
   final IAuthService _authService;

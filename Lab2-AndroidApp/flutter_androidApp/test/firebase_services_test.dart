@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/core/models/cloud_backup_mixin.dart';
 import 'package:flutter_application_1/core/services/firebase/firebase_messaging_service.dart';
 import 'package:flutter_application_1/core/services/firebase/firebase_remote_config_service.dart';
-import 'package:flutter_application_1/core/services/firebase/firebase_storage_service.dart';
+import 'package:flutter_application_1/core/services/storage_service.dart';
 import 'package:flutter_application_1/features/home/viewmodel/home_viewmodel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

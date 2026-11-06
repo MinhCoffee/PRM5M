@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../services/firebase/firebase_storage_service.dart';
+import '../services/storage_service.dart';
 
 /// Shared state + logic for backing a generated CSV up to Cloud Storage.
 /// The view model that mixes this in only has to expose its [IStorageService].
