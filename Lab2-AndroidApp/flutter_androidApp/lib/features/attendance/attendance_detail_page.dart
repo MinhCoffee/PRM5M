@@ -192,7 +192,37 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     );
   }
 
+  /// Phone layout: the whole session summary in two lines instead of a 4-tile
+  /// grid, so the roster starts higher on the screen.
+  Widget _compactSessionCard(BuildContext context, AttendanceSession session) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${session.subjectCode} · ${session.subjectName}',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Lớp ${session.className} · ${session.schedule} · ${session.room}\n'
+              '${session.date} · Buổi ${session.sessionNumber}/${session.totalSessions}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sessionCard(BuildContext context, AttendanceSession session) {
+    if (_narrow) return _compactSessionCard(context, session);
+
     final items = [
       _sessionItem(
         context,
@@ -300,7 +330,122 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
         ],
       );
 
+  Widget _statusFilterDropdown() => DropdownButton<String>(
+        value: _statusFilter,
+        onChanged: (value) {
+          setState(() => _statusFilter = value ?? 'all');
+          widget.viewModel.setStatusFilter(value ?? 'all');
+        },
+        items: const [
+          DropdownMenuItem(value: 'all', child: Text('Tất cả sinh viên')),
+          DropdownMenuItem(value: 'present', child: Text('Có mặt')),
+          DropdownMenuItem(value: 'absent', child: Text('Vắng mặt')),
+        ],
+      );
+
+  /// Phone layout: one summary line, the two main actions as buttons, and the
+  /// bulk actions tucked into a menu.
+  Widget _compactControlBar(BuildContext context) {
+    final vm = widget.viewModel;
+    final isSaving = vm.isSaving;
+    final isSubmitted = vm.isSubmitted;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Sĩ số ${vm.students.length} · Có mặt ${vm.presentCount} · '
+                    'Vắng ${vm.absentCount} · '
+                    '${(vm.attendanceRate * 100).toStringAsFixed(1)}%',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Thao tác nhanh',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'present':
+                        vm.setAll(AttendanceState.present);
+                      case 'absent':
+                        vm.setAll(AttendanceState.absent);
+                      case 'reset':
+                        vm.resetStatuses();
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'present', child: Text('Có mặt tất cả')),
+                    PopupMenuItem(value: 'absent', child: Text('Vắng tất cả')),
+                    PopupMenuItem(value: 'reset', child: Text('Đặt lại')),
+                  ],
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _actionButton(
+                          Icons.save_outlined,
+                          isSaving ? 'Đang lưu...' : 'Lưu nháp',
+                          isSaving ? () {} : () => _handleSave(submitted: false),
+                          filled: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _actionButton(
+                          Icons.cloud_sync_outlined,
+                          isSaving
+                              ? 'Đang gửi...'
+                              : (isSubmitted ? 'Cập nhật & Nộp' : 'Nộp điểm danh'),
+                          isSaving ? () {} : _handleConfirmSubmit,
+                          filled: true,
+                          orange: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) => vm.setSearchQuery(value),
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Tìm MSSV hoặc họ tên',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _statusFilterDropdown(),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _controlBar(BuildContext context, AttendanceDetailData data) {
+    if (_narrow) return _compactControlBar(context);
+
     final isSaving = widget.viewModel.isSaving;
     final isSubmitted = widget.viewModel.isSubmitted;
 
@@ -398,18 +543,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: _statusFilter,
-                  onChanged: (value) {
-                    setState(() => _statusFilter = value ?? 'all');
-                    widget.viewModel.setStatusFilter(value ?? 'all');
-                  },
-                  items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Tất cả sinh viên')),
-                    DropdownMenuItem(value: 'present', child: Text('Có mặt')),
-                    DropdownMenuItem(value: 'absent', child: Text('Vắng mặt')),
-                  ],
-                ),
+                _statusFilterDropdown(),
               ],
             ),
           ],
@@ -571,11 +705,13 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
     AttendanceStudent student,
     AttendanceDetailData data,
   ) {
+    // Phone: no avatar / major / gender, no zebra tint. Name, MSSV and the
+    // cumulative-absence chip are what the lecturer needs while ticking.
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: index.isOdd ? const Color(0xFFF8FAFC) : Colors.white,
-        border: const Border(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
           bottom: BorderSide(color: AppColors.outlineVariant),
         ),
       ),
@@ -584,18 +720,6 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: student.avatarColor.withValues(alpha: 0.18),
-                child: Text(
-                  student.fullName.isNotEmpty ? student.fullName[0] : 'S',
-                  style: TextStyle(
-                    color: student.avatarColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -605,7 +729,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      '${student.rollNo}  ·  ${student.major}  ·  ${student.gender}',
+                      student.rollNo,
                       style: const TextStyle(
                         color: AppColors.onSurfaceVariant,
                         fontSize: 12,
@@ -618,7 +742,7 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
               _absenceChip(student, data),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             children: [
               _statusToggle(student),
@@ -796,6 +920,35 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
   Widget _autosaveBar(BuildContext context) {
     final isSubmitted = widget.viewModel.isSubmitted;
     final hasBackup = widget.viewModel.hasOfflineBackup;
+
+    // Phone: a short status line instead of a full card.
+    if (_narrow) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          children: [
+            Icon(
+              isSubmitted
+                  ? Icons.cloud_done_outlined
+                  : (hasBackup ? Icons.save_as_outlined : Icons.cloud_off_outlined),
+              color: isSubmitted ? AppColors.green : AppColors.onSurfaceVariant,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                isSubmitted
+                    ? 'Đã nộp chính thức.'
+                    : (hasBackup ? 'Có bản nháp lưu trong máy.' : 'Chưa nộp.'),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Card(
       child: Padding(
