@@ -51,3 +51,6 @@ app.*.map.json
 .env
 assets/credentials.json
 
+
+# Admin web dashboard local config
+admin-web/config.js
