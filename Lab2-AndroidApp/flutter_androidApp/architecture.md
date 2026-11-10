@@ -49,7 +49,29 @@ rendered by `core/widgets/state_view.dart`, so loading, empty and error states l
 | 5 | Crashlytics | `ICrashlyticsService` | `FirebaseCrashlyticsService` + global hooks in `main.dart` | all ViewModels, Settings test buttons |
 | 6 | Remote Config | `IRemoteConfigService` | `FirebaseRemoteConfigService` | `HomeViewModel`, `SettingsViewModel`, `AiAssistantViewModel` |
 
-Firestore is **not** used.
+Firestore is **not** one of the six services. It is used for one thing only: the
+admin incident feed (`incidents` collection, see below).
+
+### Admin incident feed (Crashlytics result for the Admin web)
+
+Crashlytics has no public read API, so the admin web cannot read crash reports
+directly (the team Dev reads stack traces in Firebase Console). Instead the app
+reports a short summary to Firestore through `IIncidentService`
+(`FirestoreIncidentService`):
+
+1. **Test Crash** (Settings): writes `test_crash_triggered` (bounded 2 s wait),
+   then `FirebaseCrashlytics.crash()`.
+2. **Next launch**: `didCrashOnPreviousExecution()` from the Crashlytics SDK
+   decides whether to write `crash_confirmed`, so a confirmed crash is never faked.
+   If the app is offline the Firestore SDK queues the write.
+3. **Non-fatal** button: writes `non_fatal`.
+4. `admin-web/index.html` (tab "Sự cố ứng dụng") listens with `onSnapshot`, so a
+   new row appears without a refresh. Evidence: `docs/evidence/admin-web-incidents-tab.jpg`.
+
+Only the Firebase uid, type, platform and time are stored (no email or names).
+`firebase/firestore.rules`: a signed-in user may create an incident carrying their
+own uid; only the admin email may read; nobody may update or delete. The admin
+email in the published rules must be edited by hand (placeholder `ADMIN_EMAIL`).
 
 ### Design rules that keep the evidence honest
 
