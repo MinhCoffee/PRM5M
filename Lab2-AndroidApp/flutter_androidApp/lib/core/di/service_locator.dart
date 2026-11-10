@@ -5,6 +5,7 @@ import '../services/firebase/firebase_messaging_service.dart';
 import '../services/firebase/firebase_analytics_service.dart';
 import '../services/firebase/firebase_crashlytics_service.dart';
 import '../services/firebase/firebase_remote_config_service.dart';
+import '../services/firebase/firestore_incident_service.dart';
 import '../../services/google_sheet_service.dart';
 import '../../services/attendance_stats_service.dart';
 import '../../services/file_service.dart';
@@ -33,6 +34,7 @@ class ServiceLocator {
   final IAnalyticsService analyticsService;
   final ICrashlyticsService crashlyticsService;
   final IRemoteConfigService remoteConfigService;
+  final IIncidentService incidentService;
   final GoogleSheetService sheetService;
   final AttendanceRepository attendanceRepository;
   final AttendanceStatsService statsService;
@@ -46,6 +48,7 @@ class ServiceLocator {
     required this.analyticsService,
     required this.crashlyticsService,
     required this.remoteConfigService,
+    required this.incidentService,
     required this.sheetService,
     required this.attendanceRepository,
     required this.statsService,
@@ -71,8 +74,10 @@ class ServiceLocator {
     final analytics = FirebaseAnalyticsService();
     final crashlytics = FirebaseCrashlyticsService();
     final remoteConfig = FirebaseRemoteConfigService();
+    final incidents = FirestoreIncidentService(auth);
 
     return ServiceLocator(
+      incidentService: incidents,
       authService: auth,
       storageService: storage,
       messagingService: messaging,
@@ -180,5 +185,6 @@ class ServiceLocator {
         remoteConfigService: remoteConfigService,
         crashlyticsService: crashlyticsService,
         analyticsService: analyticsService,
+        incidentService: incidentService,
       );
 }

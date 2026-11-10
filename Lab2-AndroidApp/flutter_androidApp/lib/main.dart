@@ -81,6 +81,8 @@ Future<void> main() async {
 
   // The permission prompt can wait for the user, so it must not block runApp.
   unawaited(locator.messagingService.initialize());
+  // If the last run crashed (Crashlytics SDK says so), tell the admin web.
+  unawaited(locator.incidentService.reportPreviousCrashIfAny());
 }
 
 class AttendanceApp extends StatefulWidget {

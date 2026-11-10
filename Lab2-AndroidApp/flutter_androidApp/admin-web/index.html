@@ -74,6 +74,7 @@
       <button data-t="feed" class="on">Hoạt động mới nhất</button>
       <button data-t="risk">Sinh viên có nguy cơ</button>
       <button data-t="sessions">Buổi học</button>
+      <button data-t="incidents">Sự cố ứng dụng <span class="badge-new" id="incCount" hidden></span></button>
     </div>
     <div class="panel" id="panel"></div>
     <p class="small muted" id="note"></p>
@@ -84,6 +85,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, query, orderBy, limit, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -98,10 +101,12 @@ const WARN = 0.15, BAN = 0.20;      // same defaults as the mobile app
 const REFRESH_MS = 10000;
 let token = null, user = null, timer = null, tab = "feed", data = null;
 let seen = new Set(), firstLoad = true, fresh = new Set();
+let incidents = [], incErr = "", incFresh = new Set(), incFirst = true, unsub = null, db = null;
 
 if (cfg) {
   const app = initializeApp(cfg.firebase);
   const auth = getAuth(app);
+  db = getFirestore(app);
   const provider = new GoogleAuthProvider();
   provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
 
@@ -129,8 +134,32 @@ function start() {
   $("login").hidden = true; $("app").hidden = false; $("bar").hidden = false;
   $("who").textContent = user.email;
   load(); timer = setInterval(load, REFRESH_MS);
+  watchIncidents();
 }
-function stop() { clearInterval(timer); timer = null; }
+function stop() { clearInterval(timer); timer = null; if (unsub) unsub(); unsub = null; }
+
+// Live feed: Firestore pushes each new incident the moment the phone writes it.
+function watchIncidents() {
+  const q = query(collection(db, "incidents"), orderBy("createdAt", "desc"), limit(50));
+  unsub = onSnapshot(q, (snap) => {
+    incErr = "";
+    incFresh = new Set();
+    incidents = snap.docs.map((d) => {
+      const v = d.data({ serverTimestamps: "estimate" });
+      if (!incFirst && !d.metadata.hasPendingWrites && snap.docChanges().some((c) => c.type === "added" && c.doc.id === d.id)) incFresh.add(d.id);
+      return { id: d.id, ...v, at: v.createdAt?.toDate?.() };
+    });
+    incFirst = false;
+    const n = incidents.filter((i) => i.fatal).length;
+    $("incCount").hidden = !n; $("incCount").textContent = n;
+    if (data) render(); else renderIncidentsOnly();
+  }, (e) => {
+    incErr = e.code === "permission-denied"
+      ? "Firestore từ chối đọc (kiểm tra rules và email Admin)." : "Lỗi Firestore: " + (e.code || e.message);
+    if (data) render(); else renderIncidentsOnly();
+  });
+}
+function renderIncidentsOnly() { if (tab === "incidents") $("panel").innerHTML = incidentsView(); }
 
 async function load() {
   const base = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}/values:batchGet`;
@@ -200,7 +229,7 @@ function render() {
   ].map(([k, v]) => `<div class="kpi"><span class="muted small">${k}</span><b>${esc(v)}</b></div>`).join("");
 
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === tab));
-  $("panel").innerHTML = ({ feed, risk, sessions })[tab](d);
+  $("panel").innerHTML = ({ feed, risk, sessions, incidents: incidentsView })[tab](d);
   $("note").textContent = `Tự làm mới mỗi ${REFRESH_MS / 1000}s. Ngưỡng cảnh báo ${WARN * 100}% / cấm thi ${BAN * 100}% (giống ứng dụng). Trang chỉ đọc, không sửa dữ liệu.`;
 }
 
@@ -244,7 +273,23 @@ function sessions(d) {
     }).join("") + `</table>`;
 }
 
-$("tabs").onclick = (e) => { const t = e.target.dataset?.t; if (t) { tab = t; if (data) render(); } };
+function incidentsView() {
+  if (incErr) return empty(esc(incErr));
+  if (!incidents.length) return empty("Chưa có sự cố nào. Mở ứng dụng → Cài đặt → Ném thử lỗi (Test Crash), rồi mở lại ứng dụng.");
+  const label = {
+    test_crash_triggered: ["warning", "Đã bấm nút crash"],
+    crash_confirmed: ["absent", "Crash đã xác nhận (Crashlytics)"],
+    non_fatal: ["present", "Lỗi non-fatal"],
+  };
+  return `<table><tr><th>Thời điểm</th><th>Loại</th><th>Mức</th><th>Người dùng (uid)</th><th>Nền tảng</th><th>Mô tả</th></tr>` +
+    incidents.map((i) => { const [cls, text] = label[i.type] || ["", i.type]; return `<tr class="${incFresh.has(i.id) ? "fresh" : ""}">
+      <td>${esc(i.at ? i.at.toLocaleString("vi-VN") : "đang ghi…")}${incFresh.has(i.id) ? '<span class="badge-new">MỚI</span>' : ""}</td>
+      <td>${chip(cls, text)}</td><td>${i.fatal ? "Fatal" : "Non-fatal"}</td>
+      <td class="small">${esc(i.uid)}</td><td>${esc(i.platform)}</td><td>${esc(i.message)}</td></tr>`; }).join("") + `</table>
+    <p class="small muted" style="padding:0 12px">Stack trace chi tiết nằm trên Firebase Console → Crashlytics (dành cho team Dev). Trang này chỉ hiện tóm tắt sự cố do chính ứng dụng báo về, cập nhật tức thì.</p>`;
+}
+
+$("tabs").onclick = (e) => { const t = e.target.closest("button")?.dataset?.t; if (t) { tab = t; if (data) render(); } };
 </script>
 </body>
 </html>

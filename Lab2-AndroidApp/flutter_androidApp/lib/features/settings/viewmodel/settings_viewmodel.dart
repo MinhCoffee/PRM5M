@@ -3,6 +3,7 @@ import '../../../core/models/view_state.dart';
 import '../../../core/services/firebase/firebase_analytics_service.dart';
 import '../../../core/services/firebase/firebase_crashlytics_service.dart';
 import '../../../core/services/firebase/firebase_remote_config_service.dart';
+import '../../../core/services/firebase/firestore_incident_service.dart';
 import '../../../services/attendance_stats_service.dart';
 import '../../../services/google_sheet_service.dart';
 
@@ -25,6 +26,7 @@ class SettingsViewModel extends ChangeNotifier {
   final IRemoteConfigService _remoteConfigService;
   final ICrashlyticsService _crashlyticsService;
   final IAnalyticsService _analyticsService;
+  final IIncidentService _incidentService;
 
   ViewState<SettingsData> _state = ViewState.initial();
   ViewState<SettingsData> get state => _state;
@@ -40,10 +42,12 @@ class SettingsViewModel extends ChangeNotifier {
     required IRemoteConfigService remoteConfigService,
     required ICrashlyticsService crashlyticsService,
     required IAnalyticsService analyticsService,
+    required IIncidentService incidentService,
   })  : _statsService = statsService,
         _remoteConfigService = remoteConfigService,
         _crashlyticsService = crashlyticsService,
-        _analyticsService = analyticsService;
+        _analyticsService = analyticsService,
+        _incidentService = incidentService;
 
   Future<void> loadSettings() async {
     _state = ViewState.loading();
@@ -111,11 +115,16 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
-  void triggerTestCrash() {
+  Future<void> triggerTestCrash() async {
     // Custom diagnostic keys show up on the crash in the Crashlytics console.
     _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
     _crashlyticsService.setCustomKey('intentional_test_crash', true);
     _crashlyticsService.log('User confirmed intentional test crash');
+    // Tell the admin web first (bounded wait), then really crash.
+    await _incidentService.report(
+      IncidentType.testCrashTriggered,
+      message: 'Intentional test crash from Settings',
+    );
     _crashlyticsService.testCrash();
   }
 
@@ -123,6 +132,10 @@ class SettingsViewModel extends ChangeNotifier {
     _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
     await _crashlyticsService.sendNonFatalError(
       'Lab 3 Non-Fatal Test Error from Settings Page',
+    );
+    await _incidentService.report(
+      IncidentType.nonFatal,
+      message: 'Non-fatal test error from Settings',
     );
   }
 }
