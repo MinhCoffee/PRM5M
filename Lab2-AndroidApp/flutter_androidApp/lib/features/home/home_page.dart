@@ -112,10 +112,12 @@ class _HomePageState extends State<HomePage> {
         LayoutBuilder(
           builder: (context, constraints) {
             final cardWidth = narrow ? (constraints.maxWidth - 12) / 2 : 250.0;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
+            final perRow = narrow
+                ? 2
+                : ((constraints.maxWidth + 12) / (cardWidth + 12))
+                    .floor()
+                    .clamp(1, 4);
+            final cards = [
                 _statCard(
                   'Ca học hôm nay',
                   '${data.totalTodaySessions}',
@@ -144,7 +146,30 @@ class _HomePageState extends State<HomePage> {
                   AppColors.tertiary,
                   cardWidth,
                 ),
-              ],
+            ];
+            // Each row is as tall as its tallest card, so cards line up even
+            // when one label wraps to two lines.
+            final rows = <Widget>[];
+            for (var i = 0; i < cards.length; i += perRow) {
+              final chunk = cards.sublist(i, (i + perRow).clamp(0, cards.length));
+              if (rows.isNotEmpty) rows.add(const SizedBox(height: 12));
+              rows.add(
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var j = 0; j < chunk.length; j++) ...[
+                        if (j > 0) const SizedBox(width: 12),
+                        chunk[j],
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
             );
           },
         ),
