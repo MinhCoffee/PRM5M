@@ -299,10 +299,28 @@ class _AttendanceAppState extends State<AttendanceApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         themeMode: ThemeMode.light,
+        scrollBehavior: const _NoStretchScrollBehavior(),
         routerConfig: _router,
       ),
     );
   }
+}
+
+/// Disables the Android 12+ stretch overscroll effect (and the glow) so lists
+/// stop at the first/last item instead of stretching the whole page.
+class _NoStretchScrollBehavior extends MaterialScrollBehavior {
+  const _NoStretchScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const ClampingScrollPhysics();
 }
 
 /// Re-runs the router redirect whenever Firebase Auth state changes, so a
