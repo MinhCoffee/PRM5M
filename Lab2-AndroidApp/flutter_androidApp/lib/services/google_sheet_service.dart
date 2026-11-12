@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/services/google_sign_in_bootstrap.dart';
 import '../models/attendance_record.dart';
 import '../models/student.dart';
+import 'token_refreshing_client.dart';
 
 class GoogleSheetException implements Exception {
   final String message;
@@ -172,7 +173,10 @@ class GoogleSheetService {
 
       final auth.AutoRefreshingAuthClient oauthClient;
       if (Platform.isAndroid) {
-        oauthClient = _NativeAuthClient(await _requestAndroidClient());
+        oauthClient = TokenRefreshingClient(
+          await _requestAndroidClient(),
+          (stale) => _requestAndroidClient(staleAccessToken: stale),
+        );
       } else {
         if (clientId.isEmpty || clientSecret.isEmpty) {
           throw const GoogleSheetException(
@@ -911,7 +915,13 @@ class GoogleSheetService {
   Future<void> _ensureGoogleSignIn() => GoogleSignInBootstrap.ensureInitialized();
 
   /// Android: native Google account picker (no localhost callback needed).
-  Future<auth.AuthClient> _requestAndroidClient() async {
+  ///
+  /// [staleAccessToken] is a token Google just rejected (401): it is dropped
+  /// from the local cache first so a fresh one is issued, otherwise the same
+  /// expired token would come straight back.
+  Future<auth.AuthClient> _requestAndroidClient({
+    String? staleAccessToken,
+  }) async {
     await _ensureGoogleSignIn();
     // Firebase Auth has normally just signed this user in, so reuse that
     // account silently. Calling authenticate() here would open a second
@@ -934,6 +944,11 @@ class GoogleSheetService {
       throw const GoogleSheetException(
         'Tài khoản Google được chọn khác tài khoản đã đăng nhập. '
         'Hãy chọn đúng tài khoản đã đăng nhập vào ứng dụng.',
+      );
+    }
+    if (staleAccessToken != null) {
+      await account.authorizationClient.clearAuthorizationToken(
+        accessToken: staleAccessToken,
       );
     }
     final authorization =
@@ -1215,28 +1230,4 @@ class GoogleSheetService {
   ];
 
   String _value(Map<String, String> row, String key) => row[key]?.trim() ?? '';
-}
-
-/// Adapts a native Google Sign-In [auth.AuthClient] to the
-/// [auth.AutoRefreshingAuthClient] type required by GSheets.withClient.
-/// Tokens are refreshed by google_sign_in, not by this client.
-class _NativeAuthClient extends http.BaseClient
-    implements auth.AutoRefreshingAuthClient {
-  _NativeAuthClient(this._inner);
-
-  final auth.AuthClient _inner;
-
-  @override
-  auth.AccessCredentials get credentials => _inner.credentials;
-
-  @override
-  Stream<auth.AccessCredentials> get credentialUpdates =>
-      const Stream<auth.AccessCredentials>.empty();
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) =>
-      _inner.send(request);
-
-  @override
-  void close() => _inner.close();
 }
