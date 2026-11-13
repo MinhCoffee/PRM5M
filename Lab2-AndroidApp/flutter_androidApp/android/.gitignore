@@ -12,6 +12,3 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
-
-# Firebase config is added manually per developer (see docs/firebase-setup.md)
-app/google-services.json

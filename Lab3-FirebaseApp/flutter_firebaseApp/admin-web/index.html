@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAP Admin</title>
+<style>
+  :root {
+    --bg:#f5f6fa; --card:#fff; --text:#1d2433; --muted:#6b7385; --line:#e3e6ee;
+    --brand:#f26f21; --ok:#1a8f4d; --warn:#c77700; --bad:#c62828; --new:#fff4e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --card:#1b202b; --text:#e8ebf2; --muted:#9aa3b5; --line:#2a3140; --new:#3a2a18; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;
+           padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line); }
+  h1 { font-size:18px; margin:0; } h1 span { color:var(--brand); }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  button { font:inherit; padding:7px 14px; border-radius:8px; border:1px solid var(--line);
+           background:var(--card); color:var(--text); cursor:pointer; }
+  button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+  main { max-width:1100px; margin:0 auto; padding:16px 20px 40px; }
+  .login { max-width:460px; margin:12vh auto; text-align:center; background:var(--card);
+           border:1px solid var(--line); border-radius:14px; padding:32px 24px; }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:16px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .kpi b { display:block; font-size:26px; margin-top:2px; }
+  .tabs { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .tabs button.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:560px; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  tr:last-child td { border-bottom:0; }
+  tr.fresh { background:var(--new); animation:flash 2.5s ease-out; }
+  @keyframes flash { from { background:#ffd9b3; } to { background:var(--new); } }
+  .chip { display:inline-block; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:600; border:1px solid currentColor; }
+  .present,.ok { color:var(--ok); } .absent,.banned { color:var(--bad); } .warning { color:var(--warn); }
+  .badge-new { background:var(--brand); color:#fff; border-radius:6px; padding:1px 6px; font-size:11px; margin-left:6px; }
+  .err { background:#fdecea; color:#8a1c14; border:1px solid #f5c2bd; border-radius:10px; padding:10px 14px; margin-bottom:12px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:6px; }
+  .dot.off { background:var(--muted); }
+  .empty { padding:24px; text-align:center; color:var(--muted); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>FAP</span> Admin · Quan sát điểm danh</h1>
+  <div class="row" id="bar" hidden>
+    <span class="small muted" id="who"></span>
+    <span class="small"><span class="dot" id="dot"></span><span id="stamp">chưa tải</span></span>
+    <button id="refresh">Làm mới</button>
+    <button id="signout">Đăng xuất</button>
+  </div>
+</header>
+
+<main>
+  <div class="login" id="login">
+    <h2 style="margin-top:0">Trang dành cho Admin</h2>
+    <p class="muted">Đăng nhập bằng tài khoản Google được cấp quyền Admin. Trang chỉ <b>đọc</b>
+      dữ liệu điểm danh mà ứng dụng trên điện thoại ghi vào Google Sheet.</p>
+    <button class="primary" id="signin">Đăng nhập với Google</button>
+    <p class="small muted" id="loginMsg"></p>
+  </div>
+
+  <div id="app" hidden>
+    <div class="err" id="err" hidden></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="tabs" id="tabs">
+      <button data-t="feed" class="on">Hoạt động mới nhất</button>
+      <button data-t="risk">Sinh viên có nguy cơ</button>
+      <button data-t="sessions">Buổi học</button>
+      <button data-t="incidents">Sự cố ứng dụng <span class="badge-new" id="incCount" hidden></span></button>
+    </div>
+    <div class="panel" id="panel"></div>
+    <p class="small muted" id="note"></p>
+  </div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, query, orderBy, limit, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+
+// config.js is git-ignored (see config.example.js).
+let cfg;
+try { cfg = (await import("./config.js")).default; }
+catch { $("loginMsg").textContent = "Thiếu admin-web/config.js. Sao chép config.example.js và điền giá trị."; $("signin").disabled = true; }
+
+const WARN = 0.15, BAN = 0.20;      // same defaults as the mobile app
+const REFRESH_MS = 10000;
+let token = null, user = null, timer = null, tab = "feed", data = null;
+let seen = new Set(), firstLoad = true, fresh = new Set();
+let incidents = [], incErr = "", incFresh = new Set(), incFirst = true, unsub = null, db = null;
+
+if (cfg) {
+  const app = initializeApp(cfg.firebase);
+  const auth = getAuth(app);
+  db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+  provider.addScope("https://www.googleapis.com/auth/spreadsheets.readonly");
+
+  $("signin").onclick = async () => {
+    $("loginMsg").textContent = "";
+    try {
+      const res = await signInWithPopup(auth, provider);
+      const email = (res.user.email || "").toLowerCase();
+      if (!cfg.adminEmails.map((e) => e.toLowerCase()).includes(email)) {
+        await signOut(auth);
+        $("loginMsg").textContent = `${email} không có quyền Admin.`;
+        return;
+      }
+      token = GoogleAuthProvider.credentialFromResult(res)?.accessToken;
+      if (!token) throw new Error("Không nhận được access token Google Sheets.");
+      user = res.user;
+      start();
+    } catch (e) { $("loginMsg").textContent = "Đăng nhập thất bại: " + (e.code || e.message); }
+  };
+  $("signout").onclick = async () => { stop(); await signOut(auth); location.reload(); };
+  $("refresh").onclick = load;
+}
+
+function start() {
+  $("login").hidden = true; $("app").hidden = false; $("bar").hidden = false;
+  $("who").textContent = user.email;
+  load(); timer = setInterval(load, REFRESH_MS);
+  watchIncidents();
+}
+function stop() { clearInterval(timer); timer = null; if (unsub) unsub(); unsub = null; }
+
+// Live feed: Firestore pushes each new incident the moment the phone writes it.
+function watchIncidents() {
+  const q = query(collection(db, "incidents"), orderBy("createdAt", "desc"), limit(50));
+  unsub = onSnapshot(q, (snap) => {
+    incErr = "";
+    incFresh = new Set();
+    incidents = snap.docs.map((d) => {
+      const v = d.data({ serverTimestamps: "estimate" });
+      if (!incFirst && !d.metadata.hasPendingWrites && snap.docChanges().some((c) => c.type === "added" && c.doc.id === d.id)) incFresh.add(d.id);
+      return { id: d.id, ...v, at: v.createdAt?.toDate?.() };
+    });
+    incFirst = false;
+    const n = incidents.filter((i) => i.fatal).length;
+    $("incCount").hidden = !n; $("incCount").textContent = n;
+    if (data) render(); else renderIncidentsOnly();
+  }, (e) => {
+    incErr = e.code === "permission-denied"
+      ? "Firestore từ chối đọc (kiểm tra rules và email Admin)." : "Lỗi Firestore: " + (e.code || e.message);
+    if (data) render(); else renderIncidentsOnly();
+  });
+}
+function renderIncidentsOnly() { if (tab === "incidents") $("panel").innerHTML = incidentsView(); }
+
+async function load() {
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${cfg.spreadsheetId}/values:batchGet`;
+  const q = ["students", "schedule", "attendance"].map((r) => "ranges=" + r).join("&");
+  try {
+    const r = await fetch(`${base}?${q}&majorDimension=ROWS`, { headers: { Authorization: "Bearer " + token } });
+    if (r.status === 401) { stop(); throw new Error("Phiên Google đã hết hạn. Hãy đăng xuất rồi đăng nhập lại."); }
+    if (!r.ok) throw new Error(`Sheets API ${r.status}: ${(await r.json().catch(() => ({}))).error?.message || r.statusText}`);
+    const j = await r.json();
+    const [students, schedule, attendance] = j.valueRanges.map(toObjects);
+    data = build(students, schedule, attendance);
+    $("err").hidden = true;
+    $("dot").classList.remove("off");
+    $("stamp").textContent = "cập nhật " + new Date().toLocaleTimeString("vi-VN");
+  } catch (e) {
+    $("err").hidden = false; $("err").textContent = e.message;
+    $("dot").classList.add("off");
+    return;
+  }
+  render();
+}
+
+function toObjects(vr) {
+  const [head = [], ...rows] = vr.values || [];
+  return rows.map((row) => Object.fromEntries(head.map((h, i) => [h.trim(), (row[i] ?? "").toString().trim()])));
+}
+
+function build(students, schedule, attendance) {
+  const stu = new Map(students.map((s) => [s.student_id, s]));
+  const ses = new Map(schedule.map((s) => [s.session_id, s]));
+  const rows = attendance.map((a) => ({
+    ...a, key: a.session_id + "|" + a.student_id + "|" + a.status + "|" + a.updated_at,
+    student: stu.get(a.student_id), session: ses.get(a.session_id),
+  })).sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+
+  // Highlight rows that appeared or changed since the previous poll.
+  fresh = new Set();
+  for (const r of rows) { if (!firstLoad && !seen.has(r.key)) fresh.add(r.key); seen.add(r.key); }
+  firstLoad = false;
+
+  // Risk: absent share of the sessions recorded for each student in one subject.
+  const per = new Map();
+  for (const r of rows) {
+    const subj = r.session?.subject_code || "?";
+    const k = r.student_id + "|" + subj;
+    const o = per.get(k) || { student: r.student, subj, total: 0, absent: 0 };
+    o.total++; if (r.status === "absent") o.absent++;
+    per.set(k, o);
+  }
+  const risk = [...per.values()].map((o) => {
+    const rate = o.total ? o.absent / o.total : 0;
+    return { ...o, rate, level: rate > BAN ? "banned" : rate > WARN ? "warning" : "ok" };
+  }).sort((a, b) => b.rate - a.rate);
+
+  const sessionIds = new Set(rows.map((r) => r.session_id));
+  const absent = rows.filter((r) => r.status === "absent").length;
+  return { rows, risk, schedule, sessionIds, absent, present: rows.length - absent, students };
+}
+
+function render() {
+  const d = data, n = d.rows.length;
+  const pct = (x) => n ? (100 * x / n).toFixed(1) + "%" : "–";
+  $("kpis").innerHTML = [
+    ["Bản ghi điểm danh", n], ["Buổi đã điểm danh", `${d.sessionIds.size}/${d.schedule.length}`],
+    ["Tỷ lệ có mặt", pct(d.present)], ["Tỷ lệ vắng", pct(d.absent)],
+    ["Cảnh báo / cấm thi", `${d.risk.filter(r => r.level === "warning").length} / ${d.risk.filter(r => r.level === "banned").length}`],
+  ].map(([k, v]) => `<div class="kpi"><span class="muted small">${k}</span><b>${esc(v)}</b></div>`).join("");
+
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === tab));
+  $("panel").innerHTML = ({ feed, risk, sessions, incidents: incidentsView })[tab](d);
+  $("note").textContent = `Tự làm mới mỗi ${REFRESH_MS / 1000}s. Ngưỡng cảnh báo ${WARN * 100}% / cấm thi ${BAN * 100}% (giống ứng dụng). Trang chỉ đọc, không sửa dữ liệu.`;
+}
+
+const chip = (cls, text) => `<span class="chip ${cls}">${esc(text)}</span>`;
+const empty = (t) => `<div class="empty">${t}</div>`;
+
+function feed(d) {
+  if (!d.rows.length) return empty("Chưa có bản ghi điểm danh nào. Hãy điểm danh một buổi trên ứng dụng.");
+  return `<table><tr><th>Cập nhật</th><th>Sinh viên</th><th>Lớp</th><th>Môn</th><th>Buổi</th><th>Trạng thái</th><th>Ghi chú</th></tr>` +
+    d.rows.slice(0, 40).map((r) => `<tr class="${fresh.has(r.key) ? "fresh" : ""}">
+      <td>${esc(r.updated_at)}${fresh.has(r.key) ? '<span class="badge-new">MỚI</span>' : ""}</td>
+      <td>${esc(r.student?.full_name || r.student_id)}<div class="small muted">${esc(r.student?.student_code || "")}</div></td>
+      <td>${esc(r.student?.class_code || "")}</td>
+      <td>${esc(r.session?.subject_code || "")}</td>
+      <td>${esc(r.session?.session_date || "")} ${esc(r.session?.slot || "")}</td>
+      <td>${chip(r.status === "absent" ? "absent" : "present", r.status === "absent" ? "Vắng" : "Có mặt")}</td>
+      <td>${esc(r.note)}</td></tr>`).join("") + `</table>`;
+}
+
+function risk(d) {
+  const list = d.risk.filter((r) => r.absent > 0);
+  if (!list.length) return empty("Chưa có sinh viên nào vắng.");
+  const label = { ok: "Ổn", warning: "Cảnh báo", banned: "Nguy cơ cấm thi" };
+  return `<table><tr><th>Sinh viên</th><th>Lớp</th><th>Môn</th><th>Vắng / đã điểm danh</th><th>Tỷ lệ vắng</th><th>Mức</th></tr>` +
+    list.map((r) => `<tr><td>${esc(r.student?.full_name || "?")}<div class="small muted">${esc(r.student?.student_code || "")}</div></td>
+      <td>${esc(r.student?.class_code || "")}</td><td>${esc(r.subj)}</td>
+      <td>${r.absent} / ${r.total}</td><td>${(r.rate * 100).toFixed(1)}%</td>
+      <td>${chip(r.level, label[r.level])}</td></tr>`).join("") + `</table>`;
+}
+
+function sessions(d) {
+  if (!d.schedule.length) return empty("Chưa có lịch học.");
+  const count = new Map();
+  for (const r of d.rows) { const c = count.get(r.session_id) || { p: 0, a: 0 }; r.status === "absent" ? c.a++ : c.p++; count.set(r.session_id, c); }
+  return `<table><tr><th>Ngày</th><th>Slot</th><th>Lớp</th><th>Môn</th><th>Phòng</th><th>Đã điểm danh</th></tr>` +
+    [...d.schedule].sort((a, b) => (b.session_date || "").localeCompare(a.session_date || "")).map((s) => {
+      const c = count.get(s.session_id);
+      return `<tr><td>${esc((s.session_date || "").replace(/^'/, ""))}</td><td>${esc(s.slot)}</td><td>${esc(s.class_code)}</td>
+        <td>${esc(s.subject_code)}</td><td>${esc(s.room)}</td>
+        <td>${c ? `${chip("present", c.p + " có mặt")} ${c.a ? chip("absent", c.a + " vắng") : ""}` : '<span class="muted">chưa</span>'}</td></tr>`;
+    }).join("") + `</table>`;
+}
+
+function incidentsView() {
+  if (incErr) return empty(esc(incErr));
+  if (!incidents.length) return empty("Chưa có sự cố nào. Mở ứng dụng → Cài đặt → Ném thử lỗi (Test Crash), rồi mở lại ứng dụng.");
+  const label = {
+    test_crash_triggered: ["warning", "Đã bấm nút crash"],
+    crash_confirmed: ["absent", "Crash đã xác nhận (Crashlytics)"],
+    non_fatal: ["present", "Lỗi non-fatal"],
+  };
+  return `<table><tr><th>Thời điểm</th><th>Loại</th><th>Mức</th><th>Người dùng (uid)</th><th>Nền tảng</th><th>Mô tả</th></tr>` +
+    incidents.map((i) => { const [cls, text] = label[i.type] || ["", i.type]; return `<tr class="${incFresh.has(i.id) ? "fresh" : ""}">
+      <td>${esc(i.at ? i.at.toLocaleString("vi-VN") : "đang ghi…")}${incFresh.has(i.id) ? '<span class="badge-new">MỚI</span>' : ""}</td>
+      <td>${chip(cls, text)}</td><td>${i.fatal ? "Fatal" : "Non-fatal"}</td>
+      <td class="small">${esc(i.uid)}</td><td>${esc(i.platform)}</td><td>${esc(i.message)}</td></tr>`; }).join("") + `</table>
+    <p class="small muted" style="padding:0 12px">Stack trace chi tiết nằm trên Firebase Console → Crashlytics (dành cho team Dev). Trang này chỉ hiện tóm tắt sự cố do chính ứng dụng báo về, cập nhật tức thì.</p>`;
+}
+
+$("tabs").onclick = (e) => { const t = e.target.closest("button")?.dataset?.t; if (t) { tab = t; if (data) render(); } };
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+rules_version = '2';
+// Firestore is used only for the admin incident feed (collection "incidents").
+// Replace ADMIN_EMAIL with the admin Google account before publishing.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /incidents/{id} {
+      // Any signed-in app user may add an incident that carries their own uid.
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'type', 'fatal', 'message', 'platform', 'createdAt'])
+        && request.resource.data.type in
+             ['test_crash_triggered', 'crash_confirmed', 'non_fatal']
+        && request.resource.data.createdAt == request.time;
+      // Only the admin account reads; nobody edits or deletes.
+      allow read: if request.auth != null
+        && request.auth.token.email == 'ADMIN_EMAIL'
+        && request.auth.token.email_verified == true;
+      allow update, delete: if false;
+    }
+  }
+}
