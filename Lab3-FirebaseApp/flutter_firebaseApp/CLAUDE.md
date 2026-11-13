@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Scope
 
-This is Lab 2 (`Lab2-AndroidApp/flutter_androidApp`) of the PRM393 repo (nested git repo rooted at `PRM5M/`, branch `main`). Only work in this directory; `../../Lab1-DesktopApp` and `../../Lab3-XXX` are other labs. Run all Flutter commands from here.
+This is Lab 3 (`Lab3-FirebaseApp/flutter_firebaseApp`) of the PRM393 repo (nested git repo rooted at `PRM5M/`, branch `lab3-firebase`). Only work in this directory; `../../Lab1-DesktopApp` and `../../Lab2-AndroidApp` are the earlier labs (Lab 2 is the Android app before the Firebase work). Run all Flutter commands from here.
 
-Lab 2 is a copy of the Lab 1 Windows desktop app ("FAP Attendance", package `flutter_application_1`) that is being adapted to Android. Much of the code and docs still describe the desktop version, so check before assuming something is Android-ready.
+Lab 3 is the Lab 2 Android app ("FAP Attendance", package `flutter_application_1`) extended with Firebase services, Cloudinary storage and an admin web. Some docs written earlier still mention the old folder name `flutter_androidApp` or describe the desktop version, so check before assuming a path or a platform detail is current.
 
 ## Commands
 

@@ -219,4 +219,4 @@
 ## 6. Thông tin bàn giao dự án (Deliverables & Submission Links)
 * **Kho lưu trữ GitHub:** [https://github.com/MinhCoffee/PRM5M.git](https://github.com/MinhCoffee/PRM5M.git)
 * **Nhánh kiểm tra:** `main`
-* **Thư mục ứng dụng di động:** `Lab2-AndroidApp/flutter_androidApp`
+* **Thư mục ứng dụng di động:** `Lab3-FirebaseApp/flutter_firebaseApp` (bản Lab 2 trước Firebase nằm ở `Lab2-AndroidApp/flutter_androidApp`)
