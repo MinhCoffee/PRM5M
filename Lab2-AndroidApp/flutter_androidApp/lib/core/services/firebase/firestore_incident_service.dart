@@ -24,12 +24,20 @@ enum IncidentType {
   const IncidentType(this.wire);
 }
 
+/// Outcome of one [IIncidentService.report] call, shown to the tester so a
+/// silent failure on someone else's phone is visible on screen.
+class IncidentResult {
+  final bool delivered;
+  final String message;
+  const IncidentResult(this.delivered, this.message);
+}
+
 /// Forwards incidents to Firestore so the admin web can watch them live.
 /// Stack traces stay in Crashlytics; only a summary and the Firebase uid go
 /// here (no email, name or student data).
 abstract interface class IIncidentService {
   /// Never throws: reporting must not cause a second failure.
-  Future<void> report(IncidentType type, {String message = ''});
+  Future<IncidentResult> report(IncidentType type, {String message = ''});
 
   /// If the previous run crashed, records [IncidentType.crashConfirmed].
   Future<void> reportPreviousCrashIfAny();
@@ -49,16 +57,28 @@ class FirestoreIncidentService implements IIncidentService {
   }
 
   @override
-  Future<void> report(IncidentType type, {String message = ''}) async {
-    if (!_ready) return;
+  Future<IncidentResult> report(IncidentType type,
+      {String message = ''}) async {
+    if (!_ready) {
+      return const IncidentResult(false, 'Firebase chưa khởi tạo trên máy này.');
+    }
     try {
       // Wait briefly for a restored session; skip if nobody is signed in.
-      final uid = _auth.currentUser?.id ??
-          (await _auth.authStateChanges
+      String? uid = _auth.currentUser?.id;
+      if (uid == null) {
+        try {
+          uid = (await _auth.authStateChanges
                   .firstWhere((u) => u != null)
                   .timeout(const Duration(seconds: 3)))
               ?.id;
-      if (uid == null) return;
+        } on TimeoutException {
+          uid = null;
+        }
+      }
+      if (uid == null) {
+        return const IncidentResult(
+            false, 'Chưa có phiên đăng nhập Firebase (không có uid), không gửi được.');
+      }
 
       final write = FirebaseFirestore.instance.collection('incidents').add({
         'uid': uid,
@@ -77,10 +97,14 @@ class FirestoreIncidentService implements IIncidentService {
         payload: {'type': type.wire},
         isSuccess: true,
       );
+      return const IncidentResult(true, 'Đã gửi sự cố lên Firestore (admin sẽ thấy).');
     } on TimeoutException {
       debugPrint('Incident ${type.wire} queued (no ack within timeout).');
+      return const IncidentResult(
+          false, 'Chưa nhận được xác nhận từ Firestore (mạng chậm/offline?). Đã xếp hàng chờ gửi.');
     } catch (e) {
       debugPrint('Incident report failed: $e');
+      return IncidentResult(false, 'Gửi sự cố thất bại: $e');
     }
   }
 

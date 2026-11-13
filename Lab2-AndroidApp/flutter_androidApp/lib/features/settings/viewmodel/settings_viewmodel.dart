@@ -115,25 +115,30 @@ class SettingsViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> triggerTestCrash() async {
+  Future<void> triggerTestCrash({void Function(String message)? onResult}) async {
     // Custom diagnostic keys show up on the crash in the Crashlytics console.
     _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
     _crashlyticsService.setCustomKey('intentional_test_crash', true);
     _crashlyticsService.log('User confirmed intentional test crash');
     // Tell the admin web first (bounded wait), then really crash.
-    await _incidentService.report(
+    final result = await _incidentService.report(
       IncidentType.testCrashTriggered,
       message: 'Intentional test crash from Settings',
     );
+    if (onResult != null) {
+      onResult(result.message);
+      // Let the tester read the result before the app dies.
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+    }
     _crashlyticsService.testCrash();
   }
 
-  Future<void> triggerTestNonFatalError() async {
+  Future<IncidentResult> triggerTestNonFatalError() async {
     _crashlyticsService.setCustomKey('test_origin', 'settings_screen');
     await _crashlyticsService.sendNonFatalError(
       'Lab 3 Non-Fatal Test Error from Settings Page',
     );
-    await _incidentService.report(
+    return _incidentService.report(
       IncidentType.nonFatal,
       message: 'Non-fatal test error from Settings',
     );

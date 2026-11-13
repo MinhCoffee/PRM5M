@@ -343,7 +343,17 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             );
                             if (confirmed == true) {
-                              widget.viewModel.triggerTestCrash();
+                              widget.viewModel.triggerTestCrash(
+                                onResult: (msg) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(msg),
+                                      duration: const Duration(seconds: 4),
+                                    ),
+                                  );
+                                },
+                              );
                             }
                           },
                           icon: const Icon(Icons.warning_amber_rounded),
@@ -354,14 +364,19 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         FilledButton.tonalIcon(
                           onPressed: () async {
-                            await widget.viewModel.triggerTestNonFatalError();
+                            final result = await widget.viewModel
+                                .triggerTestNonFatalError();
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                    'Đã gửi một Non-fatal Error lên Firebase Crashlytics thành công!',
+                                    'Crashlytics: đã ghi non-fatal. '
+                                    'Admin: ${result.message}',
                                   ),
-                                  backgroundColor: AppColors.primary,
+                                  duration: const Duration(seconds: 6),
+                                  backgroundColor: result.delivered
+                                      ? AppColors.primary
+                                      : AppColors.errorText,
                                 ),
                               );
                             }
